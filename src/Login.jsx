@@ -13,31 +13,32 @@ function Login() {
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    try {
-      
-  const res = await fetch(`${API_URL}/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ email, password })
-  });
+  try {
+    const res = await fetch(`${API_URL}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: formData.email,
+        password: formData.password
+      })
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.detail || "Login failed");
-      } else {
-        // Giriş başarılı → yönlendir
-        navigate("/home");
-      }
-    } catch (err) {
-      setError("Sunucuya ulaşılamıyor.");
+    if (!res.ok) {
+      setError(data.detail || "Login failed");
+    } else {
+      navigate("/home");
     }
-  };
+  } catch (err) {
+    setError("Sunucuya ulaşılamıyor.");
+  }
+};
 
   return (
     <div style={{ maxWidth: "400px", margin: "0 auto", marginTop: "100px" }}>
