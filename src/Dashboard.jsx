@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Button, Stack, Typography } from "@mui/material";
-import BarChartIcon from "@mui/icons-material/BarChart"; // grafik ikonu
-import ReceiptIcon from "@mui/icons-material/Receipt"; // sipariş ikonu
-import ThemeToggle from "./components/ThemeToggle"; 
 import {
+  Button,
+  Stack,
+  Typography,
   TextField,
   MenuItem,
 } from "@mui/material";
+import BarChartIcon from "@mui/icons-material/BarChart";
+import ReceiptIcon from "@mui/icons-material/Receipt";
+import ThemeToggle from "./components/ThemeToggle";
+import {
+  DatePicker,
+  LocalizationProvider,
+} from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import tr from "date-fns/locale/tr";
 import {
   PieChart,
@@ -48,23 +53,18 @@ function Dashboard() {
 
   const getTurkishIntervalLabel = (key) => {
     switch (key) {
-      case "daily":
-        return "Günlük";
-      case "weekly":
-        return "Haftalık";
-      case "monthly":
-        return "Aylık";
-      case "yearly":
-        return "Yıllık";
-      default:
-        return "";
+      case "daily": return "Günlük";
+      case "weekly": return "Haftalık";
+      case "monthly": return "Aylık";
+      case "yearly": return "Yıllık";
+      default: return "";
     }
   };
 
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const response = await fetch("http://localhost:8000/orders");
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/orders`);
         const data = await response.json();
         setOrders(data);
       } catch (err) {
@@ -83,9 +83,7 @@ function Dashboard() {
       }
     } else if (interval === "weekly") {
       for (let i = 4; i >= 0; i--) {
-        const start = startOfWeek(subWeeks(parsedSelectedDate, i), {
-          locale: tr,
-        });
+        const start = startOfWeek(subWeeks(parsedSelectedDate, i), { locale: tr });
         keys.push(`Hafta: ${format(start, "dd/MM/yyyy")}`);
       }
     } else if (interval === "monthly") {
@@ -136,16 +134,12 @@ function Dashboard() {
     return entry;
   });
 
-  // 🔍 Bu fonksiyon aralık içindeki siparişleri belirler
   const isInSelectedRange = (date) => {
     const d = new Date(date);
     if (interval === "daily") {
       return barDataKeys.includes(format(d, "dd/MM/yyyy"));
     } else if (interval === "weekly") {
-      const weekKey = `Hafta: ${format(
-        startOfWeek(d, { locale: tr }),
-        "dd/MM/yyyy"
-      )}`;
+      const weekKey = `Hafta: ${format(startOfWeek(d, { locale: tr }), "dd/MM/yyyy")}`;
       return barDataKeys.includes(weekKey);
     } else if (interval === "monthly") {
       const monthKey = format(d, "MMMM yyyy", { locale: tr });
@@ -160,7 +154,6 @@ function Dashboard() {
     isInSelectedRange(order.yapilacak_tarih)
   );
 
-  // 🥧 Pie Chart verisi: türlere göre sayım
   const pieChartData = Array.from(allTypes).map((type) => ({
     name: type,
     value: filteredOrders.filter(
@@ -174,65 +167,45 @@ function Dashboard() {
         <Typography variant="h4">📊 Dashboard</Typography>
         <Stack direction="row" spacing={1}>
           <ThemeToggle />
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<ReceiptIcon />}
-            onClick={() => navigate("/home")}
-          >
+          <Button variant="contained" color="primary" startIcon={<ReceiptIcon />} onClick={() => navigate("/home")}>
             Siparişler
           </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<BarChartIcon />}
-            onClick={() => navigate("/giderler")}
-          >
+          <Button variant="contained" color="primary" startIcon={<BarChartIcon />} onClick={() => navigate("/giderler")}>
             Giderler
           </Button>
         </Stack>
       </Stack>
-      <div
-        style={{
-          display: "flex",
-          gap: "20px",
-          flexWrap: "wrap",
-          marginBottom: "20px",
-        }}
-      >
-<LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
-  <Stack direction="row" spacing={2} alignItems="center" marginBottom={3}>
-    {/* Zaman Aralığı */}
-    <TextField
-      select
-      label="Zaman Aralığı"
-      value={interval}
-      onChange={(e) => setInterval(e.target.value)}
-      variant="outlined"
-      size="small"
-    >
-      <MenuItem value="daily">Günlük</MenuItem>
-      <MenuItem value="weekly">Haftalık</MenuItem>
-      <MenuItem value="monthly">Aylık</MenuItem>
-      <MenuItem value="yearly">Yıllık</MenuItem>
-    </TextField>
 
-    {/* Tarih Seçimi */}
-    <DatePicker
-      label="Tarih Seç"
-      value={selectedDate}
-      onChange={(newValue) => setSelectedDate(newValue)}
-      slotProps={{
-        textField: {
-          variant: "outlined",
-          size: "small",
-          InputProps: { readOnly: true },
-        },
-      }}
-    />
-  </Stack>
-</LocalizationProvider>
-      </div>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
+        <Stack direction="row" spacing={2} alignItems="center" marginBottom={3}>
+          <TextField
+            select
+            label="Zaman Aralığı"
+            value={interval}
+            onChange={(e) => setInterval(e.target.value)}
+            variant="outlined"
+            size="small"
+          >
+            <MenuItem value="daily">Günlük</MenuItem>
+            <MenuItem value="weekly">Haftalık</MenuItem>
+            <MenuItem value="monthly">Aylık</MenuItem>
+            <MenuItem value="yearly">Yıllık</MenuItem>
+          </TextField>
+
+          <DatePicker
+            label="Tarih Seç"
+            value={selectedDate}
+            onChange={(newValue) => setSelectedDate(newValue)}
+            slotProps={{
+              textField: {
+                variant: "outlined",
+                size: "small",
+                InputProps: { readOnly: true },
+              },
+            }}
+          />
+        </Stack>
+      </LocalizationProvider>
 
       <h3>📉 {getTurkishIntervalLabel(interval)} Sipariş Sayısı</h3>
       <BarChart width={700} height={300} data={barChartData}>
@@ -289,8 +262,7 @@ function Dashboard() {
         </div>
         <div style={{ background: "#f5fffa", padding: "20px", borderRadius: "10px" }}>
           <h4>
-            📅{" "}
-            {{
+            📅 {{
               daily: "Bugünkü Sipariş",
               weekly: "Bu Haftaki Sipariş",
               monthly: "Bu Ayki Sipariş",

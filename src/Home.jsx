@@ -34,6 +34,7 @@ import Tooltip from "@mui/material/Tooltip";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 
 export default function Home() {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [columns, setColumns] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -55,7 +56,7 @@ export default function Home() {
   useEffect(() => {
     const fetchColumnsAndOrders = async () => {
       try {
-        const colsRes = await fetch("http://localhost:8000/orders/columns");
+        const colsRes = await fetch(`${API_URL}/orders/columns`); 
         const colsJson = await colsRes.json();
         const cols = colsJson.columns.filter(
           (col) => col !== "id" && col !== "verildigi_tarih"
@@ -68,7 +69,7 @@ export default function Home() {
         });
         setNewOrder(formInit);
 
-        const ordersRes = await fetch("http://localhost:8000/orders");
+        const ordersRes = await fetch(`${API_URL}/orders`)
         const orderData = await ordersRes.json();
         const sortedOrders = orderData.sort(
           (a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)
@@ -93,12 +94,12 @@ export default function Home() {
 
   const handleNoteSave = async () => {
   try {
-    await fetch(`http://localhost:8000/orders/${selectedNoteOrder.id}`, {
+    await fetch(`${API_URL}/orders${selectedNoteOrder.id}`, { 
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notlar: selectedNoteOrder.notlar }),
     });
-    const updated = await fetch("http://localhost:8000/orders").then((res) =>
+    const updated = await fetch(`${API_URL}/orders`).then((res) => 
       res.json()
     );
     setOrders(updated);
@@ -111,8 +112,8 @@ export default function Home() {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     const url = editingId
-      ? `http://localhost:8000/orders/${editingId}`
-      : "http://localhost:8000/orders";
+      ? `${API_URL}/orders${editingId}`
+      : "${API_URL}/orders";
     const method = editingId ? "PUT" : "POST";
 
     try {
@@ -123,7 +124,7 @@ export default function Home() {
       });
       setShowForm(false);
       setEditingId(null);
-      const updated = await fetch("http://localhost:8000/orders").then((res) =>
+      const updated = await fetch(`${API_URL}/orders`).then((res) => 
         res.json()
       );
       setOrders(updated);
@@ -134,8 +135,8 @@ export default function Home() {
 
   const handleDelete = async (id) => {
     try {
-      await fetch(`http://localhost:8000/orders/${id}`, { method: "DELETE" });
-      const updated = await fetch("http://localhost:8000/orders").then((res) =>
+      await fetch(`${API_URL}/orders/${id}`, { method: "DELETE" });
+      const updated = await fetch(`${API_URL}/orders`).then((res) =>
         res.json()
       );
       setOrders(updated);

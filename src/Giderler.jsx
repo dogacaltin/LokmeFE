@@ -16,7 +16,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-
+const API_URL = import.meta.env.VITE_API_URL;
 
 const Giderler = () => {
   const theme = useTheme();
@@ -27,29 +27,20 @@ const Giderler = () => {
   const [dateTo, setDateTo] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [showForm, setShowForm] = useState(false);
-  const [newExpense, setNewExpense] = useState({
-    tutar: "",
-    aciklama: "",
-    tarih: "",
-  });
-
+  const [newExpense, setNewExpense] = useState({ tutar: "", aciklama: "", tarih: "" });
   const [editingExpense, setEditingExpense] = useState(null);
-  const [editForm, setEditForm] = useState({
-    tutar: "",
-    aciklama: "",
-    tarih: "",
-  });
+  const [editForm, setEditForm] = useState({ tutar: "", aciklama: "", tarih: "" });
 
   // 🔄 Giderleri çek
   useEffect(() => {
-    axios.get("http://localhost:8000/expenses")
+    axios.get(`${API_URL}/expenses`)
       .then((res) => setExpenses(res.data))
       .catch((err) => console.error("Giderler alınamadı:", err));
   }, []);
 
   // ➕ Yeni gider ekle
   const handleFormSubmit = () => {
-    axios.post("http://localhost:8000/expenses", newExpense)
+    axios.post(`${API_URL}/expenses`, newExpense)
       .then((res) => {
         setExpenses((prev) => [...prev, res.data]);
         setShowForm(false);
@@ -60,7 +51,7 @@ const Giderler = () => {
 
   // 🗑️ Gider sil
   const handleDelete = (id) => {
-    axios.delete(`http://localhost:8000/expenses/${id}`)
+    axios.delete(`${API_URL}/expenses/${id}`)
       .then(() => setExpenses((prev) => prev.filter((e) => e.id !== id)))
       .catch((err) => console.error("Silme hatası:", err));
   };
@@ -81,7 +72,7 @@ const Giderler = () => {
   };
 
   const handleEditSave = () => {
-    axios.put(`http://localhost:8000/expenses/${editingExpense.id}`, editForm)
+    axios.put(`${API_URL}/expenses/${editingExpense.id}`, editForm)
       .then((res) => {
         setExpenses((prev) =>
           prev.map((exp) => (exp.id === editingExpense.id ? res.data : exp))
@@ -116,7 +107,7 @@ const Giderler = () => {
           <Button variant="contained" startIcon={<BarChartIcon />} onClick={() => navigate("/dashboard")}>
             Dashboard
           </Button>
-          <Button variant="contained"  onClick={() => navigate("/home")}>
+          <Button variant="contained" onClick={() => navigate("/home")}>
             Siparişler
           </Button>
         </Stack>
@@ -171,7 +162,7 @@ const Giderler = () => {
         GİDER EKLE
       </Button>
 
-      {/* Yeni gider ekleme formu */}
+      {/* ➕ Yeni gider ekleme formu */}
       <Dialog open={showForm} onClose={() => setShowForm(false)}>
         <DialogTitle>Yeni Gider</DialogTitle>
         <DialogContent>
@@ -187,7 +178,7 @@ const Giderler = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Gider düzenleme formu */}
+      {/* ✏️ Gider düzenleme formu */}
       <Dialog open={Boolean(editingExpense)} onClose={() => setEditingExpense(null)}>
         <DialogTitle>Gideri Düzenle</DialogTitle>
         <DialogContent>
@@ -227,7 +218,7 @@ const Giderler = () => {
                   <TableCell>{expense.aciklama}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
-                      <Button variant="outlined" size="small" onClick={() => handleEditClick(expense)}>    <EditIcon /></Button>
+                      <Button variant="outlined" size="small" onClick={() => handleEditClick(expense)}> <EditIcon /></Button>
                       <Button variant="outlined" size="small" color="error" onClick={() => handleDelete(expense.id)}> <DeleteIcon /> </Button>
                     </Stack>
                   </TableCell>
