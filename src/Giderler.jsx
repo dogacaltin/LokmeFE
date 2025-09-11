@@ -16,12 +16,12 @@ import ThemeToggle from "./components/ThemeToggle";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-const API_URL = import.meta.env.VITE_API_URL;
+
 
 const Giderler = () => {
   const theme = useTheme();
   const navigate = useNavigate();
-
+  const API_URL = process.env.REACT_APP_API_URL;
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
