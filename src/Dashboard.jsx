@@ -64,7 +64,7 @@ function Dashboard() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/orders`);
+        const response = await fetch(`${import.meta.env.REACT_APP_API_URL}/orders`);
         const data = await response.json();
         setOrders(data);
       } catch (err) {
