@@ -5,7 +5,7 @@ function Login() {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState(null);
   const navigate = useNavigate();
-
+  const API_URL = process.env.REACT_APP_API_URL;
   const handleChange = (e) => {
     setFormData((prev) => ({
       ...prev,
@@ -17,11 +17,14 @@ function Login() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      
+  const res = await fetch(`${API_URL}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ email, password })
+  });
 
       const data = await res.json();
 
