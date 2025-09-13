@@ -112,7 +112,7 @@ export default function Home() {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     const url = editingId
-      ? `${API_URL}/orders${editingId}`
+      ? `${API_URL}/orders/${editingId}`
       : `${API_URL}/orders`;
     const method = editingId ? "PUT" : "POST";
 
