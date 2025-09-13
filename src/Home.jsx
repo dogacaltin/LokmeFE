@@ -34,7 +34,7 @@ import Tooltip from "@mui/material/Tooltip";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 
 export default function Home() {
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = process.env.REACT_APP_API_URL;
   const [columns, setColumns] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showForm, setShowForm] = useState(false);
