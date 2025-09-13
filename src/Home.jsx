@@ -113,7 +113,7 @@ export default function Home() {
     e.preventDefault();
     const url = editingId
       ? `${API_URL}/orders${editingId}`
-      : "${API_URL}/orders";
+      : `${API_URL}/orders`;
     const method = editingId ? "PUT" : "POST";
 
     try {
