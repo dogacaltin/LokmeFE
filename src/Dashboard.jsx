@@ -43,6 +43,7 @@ const generateColor = (index, total) => {
 };
 
 function Dashboard() {
+  const API_URL = process.env.REACT_APP_API_URL;
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [interval, setInterval] = useState("daily");
