@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
+  Box,
   Button,
   Stack,
   Typography,
   TextField,
   MenuItem,
+  Paper
 } from "@mui/material";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import ReceiptIcon from "@mui/icons-material/Receipt";
@@ -33,7 +35,6 @@ import {
   addDays,
   subWeeks,
   subMonths,
-  subYears,
   format,
 } from "date-fns";
 
@@ -47,10 +48,7 @@ function Dashboard() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [interval, setInterval] = useState("daily");
-  const [selectedDate, setSelectedDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const parsedSelectedDate = new Date(selectedDate);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const getTurkishIntervalLabel = (key) => {
     switch (key) {
@@ -63,9 +61,27 @@ function Dashboard() {
   };
 
   useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      navigate("/"); // Token yoksa login'e yönlendir
+      return;
+    }
+
     const fetchOrders = async () => {
       try {
-        const response = await fetch(`${API_URL}/orders`);
+        const response = await fetch(`${API_URL}/orders`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            // Eğer token geçersizse (401 Unauthorized), kullanıcıyı login'e at
+            if (response.status === 401) {
+                localStorage.removeItem("authToken");
+                navigate("/");
+            }
+            throw new Error('Network response was not ok');
+        }
+
         const data = await response.json();
         setOrders(data);
       } catch (err) {
@@ -73,13 +89,14 @@ function Dashboard() {
       }
     };
     fetchOrders();
-  }, []);
+  }, [API_URL, navigate]);
 
   const getRangeKeys = () => {
     const keys = [];
+    const parsedSelectedDate = selectedDate || new Date();
     if (interval === "daily") {
       for (let i = 0; i < 7; i++) {
-        const d = addDays(parsedSelectedDate, i);
+        const d = addDays(startOfWeek(parsedSelectedDate, { locale: tr }), i);
         keys.push(format(d, "dd/MM/yyyy"));
       }
     } else if (interval === "weekly") {
@@ -101,14 +118,14 @@ function Dashboard() {
   };
 
   const barDataKeys = getRangeKeys();
-  const allTypes = new Set();
+  const allTypes = new Set(orders.map(o => o.siparis?.trim() || "Bilinmeyen"));
   const stackedMap = {};
   barDataKeys.forEach((k) => (stackedMap[k] = {}));
 
   orders.forEach((order) => {
+    if (!order.yapilacak_tarih) return;
     const d = new Date(order.yapilacak_tarih);
     const type = order.siparis?.trim() || "Bilinmeyen";
-    allTypes.add(type);
 
     let key = "";
     if (interval === "daily") {
@@ -135,10 +152,14 @@ function Dashboard() {
     return entry;
   });
 
-  const isInSelectedRange = (date) => {
-    const d = new Date(date);
+  const isInSelectedRange = (dateStr) => {
+    if(!dateStr) return false;
+    const d = new Date(dateStr);
+    const parsedSelectedDate = selectedDate || new Date();
     if (interval === "daily") {
-      return barDataKeys.includes(format(d, "dd/MM/yyyy"));
+        const startOfSelectedWeek = startOfWeek(parsedSelectedDate, { locale: tr });
+        const endOfSelectedWeek = addDays(startOfSelectedWeek, 6);
+        return d >= startOfSelectedWeek && d <= endOfSelectedWeek;
     } else if (interval === "weekly") {
       const weekKey = `Hafta: ${format(startOfWeek(d, { locale: tr }), "dd/MM/yyyy")}`;
       return barDataKeys.includes(weekKey);
@@ -160,10 +181,37 @@ function Dashboard() {
     value: filteredOrders.filter(
       (order) => (order.siparis?.trim() || "Bilinmeyen") === type
     ).length,
-  }));
+  })).filter(item => item.value > 0);
+  
+  const handleLogout = () => {
+    localStorage.removeItem("authToken");
+    navigate("/");
+  };
+  
+  const intervalTitles = {
+    daily: "Bugünkü Sipariş",
+    weekly: "Bu Haftaki Sipariş",
+    monthly: "Bu Ayki Sipariş",
+    yearly: "Bu Yılki Sipariş",
+  };
+  
+  const todayFilterLength = orders.filter((o) => {
+    if(!o.yapilacak_tarih) return false;
+    const d = new Date(o.yapilacak_tarih);
+    const today = new Date();
+    if (interval === "daily") return d.toDateString() === today.toDateString();
+    if (interval === "weekly") {
+        const start = startOfWeek(today, { locale: tr });
+        const end = addDays(start, 6);
+        return d >= start && d <= end;
+    }
+    if (interval === "monthly") return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+    if (interval === "yearly") return d.getFullYear() === today.getFullYear();
+    return false;
+  }).length;
 
   return (
-    <div style={{ padding: "30px" }}>
+    <Box sx={{ p: 4 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">📊 Dashboard</Typography>
         <Stack direction="row" spacing={1}>
@@ -173,6 +221,9 @@ function Dashboard() {
           </Button>
           <Button variant="contained" color="primary" startIcon={<BarChartIcon />} onClick={() => navigate("/giderler")}>
             Giderler
+          </Button>
+          <Button variant="contained" color="error" onClick={handleLogout}>
+            Çıkış Yap
           </Button>
         </Stack>
       </Stack>
@@ -186,8 +237,9 @@ function Dashboard() {
             onChange={(e) => setInterval(e.target.value)}
             variant="outlined"
             size="small"
+            sx={{minWidth: 150}}
           >
-            <MenuItem value="daily">Günlük</MenuItem>
+            <MenuItem value="daily">Haftalık (Gün Gün)</MenuItem>
             <MenuItem value="weekly">Haftalık</MenuItem>
             <MenuItem value="monthly">Aylık</MenuItem>
             <MenuItem value="yearly">Yıllık</MenuItem>
@@ -201,15 +253,16 @@ function Dashboard() {
               textField: {
                 variant: "outlined",
                 size: "small",
-                InputProps: { readOnly: true },
               },
             }}
           />
         </Stack>
       </LocalizationProvider>
 
-      <h3>📉 {getTurkishIntervalLabel(interval)} Sipariş Sayısı</h3>
-      <BarChart width={700} height={300} data={barChartData}>
+      <Typography variant="h5" gutterBottom>
+        {getTurkishIntervalLabel(interval)} Sipariş Sayısı
+      </Typography>
+      <BarChart width={730} height={250} data={barChartData}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" />
         <YAxis allowDecimals={false} />
@@ -225,16 +278,18 @@ function Dashboard() {
         ))}
       </BarChart>
 
-      <h3 style={{ marginTop: "40px" }}>🍩 Sipariş Dağılımı</h3>
-      <PieChart width={500} height={400}>
+      <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
+        Sipariş Dağılımı ({getTurkishIntervalLabel(interval)})
+      </Typography>
+       <PieChart width={730} height={300}>
         <Pie
           data={pieChartData}
           dataKey="value"
           nameKey="name"
           cx="50%"
           cy="50%"
-          innerRadius={90}
-          outerRadius={150}
+          innerRadius={80}
+          outerRadius={120}
           paddingAngle={5}
         >
           {pieChartData.map((_, index) => (
@@ -247,55 +302,30 @@ function Dashboard() {
         <Tooltip />
         <Legend />
       </PieChart>
-
-      <div style={{ display: "flex", gap: "30px", marginTop: "40px" }}>
-        <div style={{ background: "#f0f8ff", padding: "20px", borderRadius: "10px" }}>
-          <h4>📦 Toplam Sipariş</h4>
-          <p style={{ fontSize: "24px", fontWeight: "bold" }}>
-            {filteredOrders.length}
-          </p>
-        </div>
-        <div style={{ background: "#fff0f5", padding: "20px", borderRadius: "10px" }}>
-          <h4>💰 Toplam Gelir</h4>
-          <p style={{ fontSize: "24px", fontWeight: "bold" }}>
-            {filteredOrders.reduce((acc, cur) => acc + Number(cur.fiyat || 0), 0)} ₺
-          </p>
-        </div>
-        <div style={{ background: "#f5fffa", padding: "20px", borderRadius: "10px" }}>
-          <h4>
-            📅 {{
-              daily: "Bugünkü Sipariş",
-              weekly: "Bu Haftaki Sipariş",
-              monthly: "Bu Ayki Sipariş",
-              yearly: "Bu Yılki Sipariş",
-            }[interval]}
-          </h4>
-          <p style={{ fontSize: "24px", fontWeight: "bold" }}>
-            {orders.filter((o) => {
-              const d = new Date(o.yapilacak_tarih);
-              const today = new Date();
-
-              if (interval === "daily") {
-                return d.toDateString() === today.toDateString();
-              } else if (interval === "weekly") {
-                const start = startOfWeek(today, { locale: tr });
-                const end = addDays(start, 6);
-                return d >= start && d <= end;
-              } else if (interval === "monthly") {
-                return (
-                  d.getFullYear() === today.getFullYear() &&
-                  d.getMonth() === today.getMonth()
-                );
-              } else if (interval === "yearly") {
-                return d.getFullYear() === today.getFullYear();
-              }
-              return false;
-            }).length}
-          </p>
-        </div>
-      </div>
-    </div>
+      
+      <Stack direction="row" spacing={3} mt={4}>
+        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
+            <Typography variant="h6">📦 Toplam Sipariş</Typography>
+            <Typography variant="h4" component="p">{filteredOrders.length}</Typography>
+        </Paper>
+        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
+            <Typography variant="h6">💰 Toplam Gelir</Typography>
+            <Typography variant="h4" component="p">
+                {filteredOrders.reduce((acc, cur) => acc + Number(cur.fiyat || 0), 0).toLocaleString('tr-TR')} ₺
+            </Typography>
+        </Paper>
+        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
+          <Typography variant="h6">
+            📅 {intervalTitles[interval]}
+          </Typography>
+          <Typography variant="h4" component="p">
+            {todayFilterLength}
+          </Typography>
+        </Paper>
+      </Stack>
+    </Box>
   );
 }
 
 export default Dashboard;
+
