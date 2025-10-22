@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogActions,
   useTheme,
+  CircularProgress // Yükleme göstergesi için eklendi
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -49,22 +50,30 @@ export default function Home() {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [noteOrderId, setNoteOrderId] = useState(null);
-  // --- EKSİK STATE'LER EKLENDİ ---
-  const [selectedNoteOrder, setSelectedNoteOrder] = useState(null); // Notu düzenlenen siparişin verisi
+  const [selectedNoteOrder, setSelectedNoteOrder] = useState(null);
+  // --- YENİ: Yükleniyor durumu eklendi ---
+  const [loading, setLoading] = useState(true);
   // --- EKLENEN BÖLÜM SONU ---
 
 
   const handleUnauthorized = (error) => {
-    if (error.response && error.response.status === 401) {
+    // Yanıtı veya doğrudan hata nesnesini kontrol et
+    const status = error.response ? error.response.status : (error instanceof Response ? error.status : null);
+     if (status === 401) {
         localStorage.removeItem("authToken");
         navigate("/");
+    } else {
+        // Diğer hatalar için genel bir loglama veya kullanıcı bildirimi
+        console.error("Beklenmedik bir hata oluştu:", error);
     }
   };
 
   useEffect(() => {
+    setLoading(true); // Yüklemeyi başlat
     const token = localStorage.getItem("authToken");
     if (!token) {
       navigate("/");
+      // setLoading(false); // Gerekirse, ama zaten yönlendiriliyor
       return;
     }
 
@@ -72,32 +81,39 @@ export default function Home() {
 
     const fetchColumnsAndOrders = async () => {
       try {
-        // Kolonları çekmek için headers gerekmiyorsa kaldırılabilir
-        const colsRes = await fetch(`${API_URL}/orders/columns`, authHeaders);
-        if (!colsRes.ok) throw { response: colsRes };
+        // Kolonları çek (Promise.all ile paralel yapabiliriz)
+        const colsPromise = fetch(`${API_URL}/orders/columns`, authHeaders);
+        const ordersPromise = fetch(`${API_URL}/orders`, authHeaders);
+
+        const [colsRes, ordersRes] = await Promise.all([colsPromise, ordersPromise]);
+
+        // Hata kontrolü
+        if (!colsRes.ok) throw colsRes; // Artık Response objesini fırlatıyoruz
+        if (!ordersRes.ok) throw ordersRes;
+
         const colsJson = await colsRes.json();
         const cols = colsJson.columns.filter(
           (col) => col !== "id" && col !== "verildigi_tarih"
         );
         setColumns(cols);
 
+        // Form başlangıç durumu artık columns'a bağlı değil, sabit olabilir
+        // İstersen burada bırakabilirsin ya da sabit tanımlayabilirsin.
         const formInit = {};
-        cols.forEach((col) => {
-          formInit[col] = "";
-        });
-        // setNewOrder(formInit); // Başlangıçta boş olmalı, edit yapınca dolacak
+        cols.forEach((col) => { formInit[col] = ""; });
+        // setNewOrder(formInit); // Sadece edit modunda set edilecek
 
-        const ordersRes = await fetch(`${API_URL}/orders`, authHeaders);
-        if (!ordersRes.ok) throw { response: ordersRes };
         const orderData = await ordersRes.json();
-        // Tarih alanı olmayanları filtrele ve sırala
         const sortedOrders = orderData
-          .filter(order => order.yapilacak_tarih) // Tarihi olmayanları sıralamadan çıkar
+          .filter(order => order.yapilacak_tarih)
           .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih));
         setOrders(sortedOrders);
+
       } catch (err) {
         console.error("Veri çekme hatası:", err);
-        handleUnauthorized(err);
+        handleUnauthorized(err); // Hata yönetimini çağır
+      } finally {
+         setLoading(false); // Yüklemeyi bitir (başarılı veya hatalı)
       }
     };
     fetchColumnsAndOrders();
@@ -108,40 +124,36 @@ export default function Home() {
     setNewOrder((prev) => ({ ...prev, [name]: value }));
   };
 
-  // handleEditNote fonksiyonu zaten doğru tanımlanmış görünüyor.
   const handleEditNote = (order) => {
-    setSelectedNoteOrder(order); // State'i güncelle
-    setNoteContent(order.notlar || ""); // Dialog içeriğini ayarla
-    setNoteOrderId(order.id); // Sipariş ID'sini sakla
+    setSelectedNoteOrder(order);
+    setNoteContent(order.notlar || "");
+    setNoteOrderId(order.id);
     setNoteDialogOpen(true);
   };
 
 
   const handleNoteSave = async () => {
     const token = localStorage.getItem("authToken");
-    if (!selectedNoteOrder) return; // Seçili sipariş yoksa işlem yapma
+    if (!selectedNoteOrder) return;
 
     try {
-      // API isteği için sadece notlar verisini gönder
       const payload = { notlar: noteContent };
-
-      const response = await fetch(`${API_URL}/orders/${selectedNoteOrder.id}`, { // ID'yi selectedNoteOrder'dan al
+      const response = await fetch(`${API_URL}/orders/${selectedNoteOrder.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload), // Sadece notları gönder
+        body: JSON.stringify(payload),
       });
-       if (!response.ok) throw { response };
+       if (!response.ok) throw response; // Artık Response objesini fırlatıyoruz
 
-      // State'i güncelle (API'den tekrar çekmek yerine)
       setOrders(prevOrders =>
         prevOrders.map(o =>
           o.id === selectedNoteOrder.id ? { ...o, notlar: noteContent } : o
         )
       );
       setNoteDialogOpen(false);
-      setSelectedNoteOrder(null); // Seçili siparişi temizle
-      setNoteContent(""); // Not içeriğini temizle
-      setNoteOrderId(null); // ID'yi temizle
+      setSelectedNoteOrder(null);
+      setNoteContent("");
+      setNoteOrderId(null);
     } catch (err) {
       console.error("Notlar güncelleme hatası:", err);
       handleUnauthorized(err);
@@ -157,17 +169,21 @@ export default function Home() {
       : `${API_URL}/orders`;
     const method = editingId ? "PUT" : "POST";
 
-     // Yeni sipariş eklerken veya güncellerken tarih formatını kontrol et
     const orderPayload = { ...newOrder };
     if (orderPayload.yapilacak_tarih && typeof orderPayload.yapilacak_tarih === 'string') {
-        // Eğer tarih string ise ISO formatına çevir, değilse olduğu gibi bırak
         try {
-            orderPayload.yapilacak_tarih = new Date(orderPayload.yapilacak_tarih).toISOString();
+            // datetime-local'den gelen formatı direkt ISO'ya çevirebiliriz
+            // Zaman dilimi sorunlarını önlemek için UTC'ye çevirme.
+            // Backend zaten bunu string olarak bekliyor olmalı (schema güncellemesi sonrası)
+             orderPayload.yapilacak_tarih = new Date(orderPayload.yapilacak_tarih).toISOString();
         } catch (dateErr) {
             console.error("Geçersiz tarih formatı:", orderPayload.yapilacak_tarih);
-            // Kullanıcıya hata gösterilebilir
             return;
         }
+    } else if (!orderPayload.yapilacak_tarih && method === 'POST') {
+        // Yeni siparişte tarih zorunluysa burada kontrol ekle
+         console.error("Yapılacak tarih zorunludur.");
+         return; // veya kullanıcıya mesaj göster
     }
 
 
@@ -175,18 +191,19 @@ export default function Home() {
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(orderPayload), // Düzeltilmiş payload'u gönder
+        body: JSON.stringify(orderPayload),
       });
-      if (!response.ok) throw { response };
+      if (!response.ok) throw response; // Artık Response objesini fırlatıyoruz
 
       setShowForm(false);
       setEditingId(null);
+      setNewOrder({}); // Formu temizle
 
       // Veriyi tekrar çek
       const ordersRes = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!ordersRes.ok) throw { response: ordersRes };
+      if (!ordersRes.ok) throw ordersRes;
       const updated = await ordersRes.json();
-      setOrders(updated.filter(o => o.yapilacak_tarih).sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih))); // Tekrar filtrele ve sırala
+      setOrders(updated.filter(o => o.yapilacak_tarih).sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)));
     } catch (err) {
       console.error("Sipariş kaydetme hatası:", err);
       handleUnauthorized(err);
@@ -200,7 +217,7 @@ export default function Home() {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` }
       });
-       if (!response.ok) throw { response };
+       if (!response.ok) throw response; // Artık Response objesini fırlatıyoruz
       setOrders(prevOrders => prevOrders.filter(order => order.id !== id));
     } catch (err) {
       console.error("Silme hatası:", err);
@@ -213,20 +230,24 @@ export default function Home() {
     delete editable.id;
     delete editable.verildigi_tarih;
 
-    // Tarihi datetime-local input formatına çevir (YYYY-MM-DDTHH:mm)
      if (editable.yapilacak_tarih) {
         try {
             const date = new Date(editable.yapilacak_tarih);
-            // Zaman dilimi ofsetini hesaba kat
-            const offset = date.getTimezoneOffset();
-            const localDate = new Date(date.getTime() - (offset*60*1000));
-            editable.yapilacak_tarih = localDate.toISOString().slice(0, 16);
+            // Zaman dilimi ofsetini hesaba katmadan, yerel saati alıp ISO'ya çevir
+            // YYYY-MM-DDTHH:mm formatı için slice(0, 16)
+            const year = date.getFullYear();
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            editable.yapilacak_tarih = `${year}-${month}-${day}T${hours}:${minutes}`;
+
         } catch (e) {
              console.error("Düzenleme için tarih formatı hatası:", e);
-             editable.yapilacak_tarih = ""; // Hata durumunda boşalt
+             editable.yapilacak_tarih = "";
         }
     } else {
-        editable.yapilacak_tarih = ""; // Tarih yoksa boşalt
+        editable.yapilacak_tarih = "";
     }
 
 
@@ -243,7 +264,8 @@ export default function Home() {
   const now = new Date();
   const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000);
 
-  const filteredOrders = orders
+  // YENİ: orders state'i henüz yüklenmediyse filtreleme yapma
+  const filteredOrders = !loading ? orders
     .map((order) => {
       const yapilacakTarih = order.yapilacak_tarih
         ? new Date(order.yapilacak_tarih)
@@ -258,16 +280,14 @@ export default function Home() {
         ? new Date(order.yapilacak_tarih)
         : null;
 
-      // Tarih alanı olmayanları filtrelemede dikkate alma veya özel bir kontrol ekle
       if (!yapilacakTarih) {
-          // Örneğin, tarih filtresi yoksa ve arama eşleşiyorsa göster
           if (!dateFrom && !dateTo && filterType === 'all') {
                const stringMatch = [
                     order.musteri_isim, order.musteri_telefon, order.siparis, order.ekip,
                ].filter(Boolean).join(" ").toLowerCase().includes(searchQuery.toLowerCase());
                return stringMatch;
           }
-          return false; // Tarih filtresi varsa veya 'all' değilse gösterme
+          return false;
       }
 
 
@@ -286,15 +306,22 @@ export default function Home() {
       return dateMatch && stringMatch && filterMatch;
     })
     .sort((a, b) => {
-      // Sıralamada da tarih kontrolü
       if (!a.yapilacak_tarih || !b.yapilacak_tarih) return 0;
       const aTime = new Date(a.yapilacak_tarih);
       const bTime = new Date(b.yapilacak_tarih);
       if (a.yapildi && b.yapildi) return bTime - aTime;
       if (!a.yapildi && !b.yapildi) return aTime - bTime;
       return a.yapildi ? 1 : -1;
-    });
+    }) : []; // Yükleniyorsa boş dizi döndür
 
+    // YENİ: Yükleniyor durumu ekranda göster
+    if (loading) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                <CircularProgress />
+            </Box>
+        );
+    }
 
   return (
     <Box sx={{ p: 4, minHeight: "100vh", backgroundColor: theme.palette.background.default }}>
