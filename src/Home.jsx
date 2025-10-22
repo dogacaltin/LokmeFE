@@ -57,14 +57,25 @@ export default function Home() {
 
 
   const handleUnauthorized = (error) => {
-    // Yanıtı veya doğrudan hata nesnesini kontrol et
-    const status = error.response ? error.response.status : (error instanceof Response ? error.status : null);
-     if (status === 401) {
+    // Hatayı logla (geliştirme için)
+    console.error("Authorization Error Check:", error);
+
+    // Hatanın bir Response objesi olup olmadığını ve status kodunu kontrol et
+    const isResponse = error instanceof Response;
+    const status = isResponse ? error.status : (error.response ? error.response.status : null);
+
+    if (status === 401) {
+        console.log("Unauthorized (401) detected, logging out.");
         localStorage.removeItem("authToken");
         navigate("/");
-    } else {
-        // Diğer hatalar için genel bir loglama veya kullanıcı bildirimi
-        console.error("Beklenmedik bir hata oluştu:", error);
+    } else if (isResponse) {
+        // 401 dışındaki diğer HTTP hataları için
+        console.error(`API Error: ${status} ${error.statusText}`);
+        // Kullanıcıya genel bir hata mesajı gösterilebilir
+    }
+     else {
+        // Ağ hatası veya diğer JavaScript hataları
+        console.error("An unexpected error occurred:", error);
     }
   };
 
