@@ -36,6 +36,7 @@ import { DatePicker } from "@mui/x-date-pickers";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 import LogoutIcon from '@mui/icons-material/Logout';
 import NotificationsIcon from '@mui/icons-material/Notifications'; // Not göstergesi ikonu
+import PhoneIcon from '@mui/icons-material/Phone';
 
 export default function Home() {
   const API_URL = process.env.REACT_APP_API_URL;
@@ -55,6 +56,11 @@ export default function Home() {
   const [noteOrderId, setNoteOrderId] = useState(null);
   const [selectedNoteOrder, setSelectedNoteOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+    // --- YENİ: Telefon Notları Dialog State'leri ---
+  const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
+  const [phoneContent, setPhoneContent] = useState("");
+  const [phoneOrderId, setPhoneOrderId] = useState(null); // Hangi sipariş için olduğunu bilmek için
+  // --- EKLENEN BÖLÜM SONU ---
   // --- YENİ: Silme onayı için state'ler ---
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
@@ -617,6 +623,10 @@ export default function Home() {
                 // --- YENİ: Not var mı kontrolü ---
                 const hasNotes = order.notlar && order.notlar.trim().length > 0;
                 // --- EKLENEN BÖLÜM SONU ---
+
+                // --- YENİ: Ekstra telefon notları var mı kontrolü ---
+                const hasPhoneNotes = order.ekstra_telefon && order.ekstra_telefon.trim().length > 0;
+                // --- EKLENEN BÖLÜM SONU ---
                 return (
                   <TableRow key={order.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                     <TableCell>{saat}</TableCell>
@@ -655,6 +665,14 @@ export default function Home() {
                                   </IconButton>
                               </Badge>
                               {/* --- EKLENEN BÖLÜM SONU --- */}
+
+                                                    {/* --- YENİ: Telefon Notları Butonu --- */}
+                          <Tooltip title={hasPhoneNotes ? "Ekstra Telefonları Gör/Düzenle (İçerik Var)" : "Ekstra Telefonları Gör/Düzenle"}>
+                              <Badge color="info" variant="dot" invisible={!hasPhoneNotes} overlap="circular">
+                                  <IconButton size="small" onClick={() => handleEditPhone(order)}><PhoneIcon fontSize="small"/></IconButton>
+                              </Badge>
+                          </Tooltip>
+                          {/* --- EKLENEN BÖLÜM SONU --- */}
                           </Tooltip>
                       </Stack>
                     </TableCell>
