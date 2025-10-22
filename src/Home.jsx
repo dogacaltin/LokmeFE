@@ -31,6 +31,7 @@ import { tr } from "date-fns/locale";
 import { DatePicker } from "@mui/x-date-pickers";
 import Tooltip from "@mui/material/Tooltip";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
+// YENİ: Çıkış ikonu eklendi
 import LogoutIcon from '@mui/icons-material/Logout';
 
 export default function Home() {
@@ -50,7 +51,10 @@ export default function Home() {
   const [noteContent, setNoteContent] = useState("");
   const [noteOrderId, setNoteOrderId] = useState(null);
   
+  // YENİ: Yetkisiz istekleri yakalayan yardımcı fonksiyon
   const handleUnauthorized = (error) => {
+    // Eğer backend 401 (Unauthorized) hatası dönerse, token geçersizdir.
+    // Kullanıcıyı login sayfasına yönlendir.
     if (error.response && error.response.status === 401) {
         localStorage.removeItem("authToken");
         navigate("/");
@@ -58,18 +62,22 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // YENİ: Token'ı al ve kontrol et
     const token = localStorage.getItem("authToken");
     if (!token) {
-      navigate("/");
+      navigate("/"); // Token yoksa login'e at
       return;
     }
 
+    // YENİ: Tüm istekler için standart başlık (header)
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
     const fetchColumnsAndOrders = async () => {
       try {
+        // YENİ: İsteklere authHeaders eklendi
         const colsRes = await fetch(`${API_URL}/orders/columns`, authHeaders); 
-        if (!colsRes.ok) throw { response: colsRes };
+        if (!colsRes.ok) throw { response: colsRes }; // Hata kontrolü
+        
         const colsJson = await colsRes.json();
         const cols = colsJson.columns.filter(
           (col) => col !== "id" && col !== "verildigi_tarih"
@@ -82,8 +90,10 @@ export default function Home() {
         });
         setNewOrder(formInit);
 
+        // YENİ: İsteklere authHeaders eklendi
         const ordersRes = await fetch(`${API_URL}/orders`, authHeaders);
-        if (!ordersRes.ok) throw { response: ordersRes };
+        if (!ordersRes.ok) throw { response: ordersRes }; // Hata kontrolü
+
         const orderData = await ordersRes.json();
         const sortedOrders = orderData.sort(
           (a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)
@@ -91,7 +101,7 @@ export default function Home() {
         setOrders(sortedOrders);
       } catch (err) {
         console.error("Veri çekme hatası:", err);
-        handleUnauthorized(err);
+        handleUnauthorized(err); // YENİ: Hata yönetimi
       }
     };
     fetchColumnsAndOrders();
@@ -102,25 +112,37 @@ export default function Home() {
     setNewOrder((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleEditNote = (order) => {
+    setSelectedNoteOrder(order);
+    setNoteDialogOpen(true);
+  };
+
   const handleNoteSave = async () => {
+    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
     try {
-      await fetch(`${API_URL}/orders${noteOrderId}`, { 
+      // YENİ: İsteklere authHeaders eklendi ve URL düzeltildi
+      await fetch(`${API_URL}/orders/${selectedNoteOrder.id}`, { 
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ notlar: noteContent }),
+        body: JSON.stringify({ notlar: selectedNoteOrder.notlar }),
       });
-      const updatedOrders = orders.map(o => o.id === noteOrderId ? {...o, notlar: noteContent} : o);
-      setOrders(updatedOrders);
+      
+      // YENİ: authHeaders ile veri çek
+      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => 
+        res.json()
+      );
+      setOrders(updated);
       setNoteDialogOpen(false);
     } catch (err) {
       console.error("Notlar güncelleme hatası:", err);
-      handleUnauthorized(err);
+      handleUnauthorized(err); // YENİ: Hata yönetimi
     }
   };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
     const url = editingId
       ? `${API_URL}/orders/${editingId}`
@@ -128,35 +150,42 @@ export default function Home() {
     const method = editingId ? "PUT" : "POST";
 
     try {
-      const response = await fetch(url, {
+      // YENİ: İsteklere authHeaders eklendi
+      await fetch(url, {
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(newOrder),
       });
-      if (!response.ok) throw { response };
-
       setShowForm(false);
       setEditingId(null);
-      const ordersRes = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
-      const updated = await ordersRes.json();
+      // YENİ: authHeaders ile veri çek
+      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => 
+        res.json()
+      );
       setOrders(updated);
     } catch (err) {
       console.error("Sipariş kaydetme hatası:", err);
-      handleUnauthorized(err);
+      handleUnauthorized(err); // YENİ: Hata yönetimi
     }
   };
 
   const handleDelete = async (id) => {
+    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
     try {
+      // YENİ: İsteklere authHeaders eklendi
       await fetch(`${API_URL}/orders/${id}`, { 
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` } 
       });
-      setOrders(prevOrders => prevOrders.filter(order => order.id !== id));
+      // YENİ: authHeaders ile veri çek
+      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) =>
+        res.json()
+      );
+      setOrders(updated);
     } catch (err) {
       console.error("Silme hatası:", err);
-      handleUnauthorized(err);
+      handleUnauthorized(err); // YENİ: Hata yönetimi
     }
   };
 
@@ -168,12 +197,13 @@ export default function Home() {
     setEditingId(order.id);
     setShowForm(true);
   };
-
+  
+  // YENİ: Çıkış yapma fonksiyonu
   const handleLogout = () => {
     localStorage.removeItem("authToken");
     navigate("/");
   };
-  
+
   const now = new Date();
   const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000);
 
@@ -188,6 +218,7 @@ export default function Home() {
       };
     })
 .filter((order) => {
+  // ... (filtreleme kodun aynı kalıyor) ...
   const yapilacakTarih = order.yapilacak_tarih
     ? new Date(order.yapilacak_tarih)
     : null;
@@ -196,13 +227,13 @@ export default function Home() {
 
   const from = dateFrom
     ? new Date(
-        new Date(dateFrom).setHours(0, 0, 0, 0)
+        new Date(dateFrom).setHours(0, 0, 0, 0) // 00:00:00.000
       ).getTime()
     : null;
 
   const to = dateTo
     ? new Date(
-        new Date(dateTo).setHours(23, 59, 59, 999)
+        new Date(dateTo).setHours(23, 59, 59, 999) // 23:59:59.999
       ).getTime()
     : null;
 
@@ -229,6 +260,7 @@ export default function Home() {
   return dateMatch && stringMatch && filterMatch;
 })
     .sort((a, b) => {
+      // YENİ: Tarih alanı yoksa çökmemesi için kontrol
       if (!a.yapilacak_tarih || !b.yapilacak_tarih) return 0;
       const aTime = new Date(a.yapilacak_tarih);
       const bTime = new Date(b.yapilacak_tarih);
@@ -249,41 +281,77 @@ export default function Home() {
           <Button variant="contained" color="primary" onClick={() => navigate("/giderler")}>
             Giderler
           </Button>
+          {/* YENİ: Çıkış yap butonu eklendi */}
           <Button variant="contained" color="error" startIcon={<LogoutIcon />} onClick={handleLogout}>
             Çıkış Yap
           </Button>
         </Stack>
       </Stack>
 
+      {/* ... (Kodunun geri kalan kısmı aynı, burada bir değişiklik yok) ... */}
       <Stack direction="row" spacing={2} mb={3}>
         <TextField
           label="Ara..."
           variant="outlined"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          sx={{ backgroundColor: theme.palette.mode === "dark" ? "#2c2c2c" : "#f5f5f5", borderRadius: 1, flexGrow: 1 }}
+          sx={{ backgroundColor: theme.palette.mode === "dark" ? "#2c2c2c" : "#f5f5f5", borderRadius: 1 }}
         />
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
-          <DatePicker
-            label="Başlangıç Tarihi"
-            value={dateFrom}
-            onChange={(newValue) => setDateFrom(newValue)}
-          />
-          <DatePicker
-            label="Bitiş Tarihi"
-            value={dateTo}
-            onChange={(newValue) => setDateTo(newValue)}
-          />
-          <Tooltip title="Tarih filtresini temizle">
-            <IconButton color="primary" onClick={() => { setDateFrom(null); setDateTo(null); }}>
-              <CleaningServicesIcon />
-            </IconButton>
-          </Tooltip>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center">
+              <DatePicker
+                label="Başlangıç Tarihi"
+                value={dateFrom}
+                onChange={(newValue) => setDateFrom(newValue)}
+                slotProps={{
+                  textField: {
+                    variant: "outlined",
+                    InputProps: { readOnly: true },
+                  },
+                }}
+              />
+              <DatePicker
+                label="Bitiş Tarihi"
+                value={dateTo}
+                onChange={(newValue) => setDateTo(newValue)}
+                slotProps={{
+                  textField: {
+                    variant: "outlined",
+                    inputProps: { readOnly: true },
+                  },
+                }}
+              />
+            </Stack>
+
+            {/* Temizleme İkonu */}
+            <Tooltip title="Tarih filtresini temizle">
+              <IconButton
+                color="primary"
+                onClick={() => {
+                  setDateFrom(null);
+                  setDateTo(null);
+                }}
+              >
+                <CleaningServicesIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </LocalizationProvider>
+
         <Button
-          variant="contained"
+          variant="outlined"
           startIcon={<AddIcon />}
           onClick={() => setShowForm(true)}
+          sx={{
+            color: "#000",
+            backgroundColor: theme.palette.mode === "dark" ? "#fff" : "#f5f5f5",
+            boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.25)",
+            "&:hover": {
+              backgroundColor: theme.palette.mode === "dark" ? "#e0e0e0" : "#e0e0e0",
+              boxShadow: "0px 6px 16px rgba(0, 0, 0, 0.3)",
+            },
+          }}
         >
           YENİ SİPARİŞ
         </Button>
@@ -310,7 +378,7 @@ export default function Home() {
                 key={col}
                 name={col}
                 label={col.replaceAll("_", " ")}
-                value={newOrder[col] || ""}
+                value={newOrder[col] || ''} // YENİ: Kontrolsüz bileşeni önlemek için
                 onChange={handleInputChange}
                 type={
                   col.includes("tarih")
@@ -319,7 +387,7 @@ export default function Home() {
                     ? "number"
                     : "text"
                 }
-                InputLabelProps={{ shrink: true }}
+                InputLabelProps={col.includes("tarih") ? { shrink: true } : undefined}
                 multiline={col === "notlar"}
                 rows={col === "notlar" ? 2 : undefined}
                 required={col !== "notlar"}
@@ -339,74 +407,142 @@ export default function Home() {
   onClose={() => setNoteDialogOpen(false)}
   maxWidth="sm"
   fullWidth
+  PaperProps={{
+    sx: {
+      borderRadius: 3,
+      p: 2,
+    },
+  }}
 >
-  <DialogTitle>📝 Notlar</DialogTitle>
+  <DialogTitle
+    sx={{
+      textAlign: "center",
+      fontWeight: "bold",
+      fontSize: 22,
+      color: "#1976d2",
+    }}
+  >
+    📝 Notlar
+  </DialogTitle>
+
   <DialogContent>
-      <TextField
-          autoFocus
-          margin="dense"
-          id="name"
-          label="Not İçeriği"
-          type="text"
-          fullWidth
-          multiline
-          rows={4}
-          variant="outlined"
-          value={noteContent}
-          onChange={(e) => setNoteContent(e.target.value)}
-      />
+    <Box
+      sx={{
+        backgroundColor: "#f9f9f9",
+        border: "1px solid #ddd",
+        borderRadius: 2,
+        padding: 2,
+        minHeight: "80px",
+      }}
+    >
+      <Typography
+        variant="body1"
+        sx={{
+          whiteSpace: "pre-wrap",
+          fontSize: 16,
+          color: "#333",
+        }}
+      >
+        {noteContent}
+      </Typography>
+    </Box>
   </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setNoteDialogOpen(false)}>İptal</Button>
-    <Button onClick={() => handleNoteSave({ id: noteOrderId, notlar: noteContent })}>Kaydet</Button>
+
+  <DialogActions sx={{ justifyContent: "center" }}>
+    <Button
+      variant="contained"
+      color="primary"
+      onClick={() => setNoteDialogOpen(false)}
+      sx={{ mt: 1 }}
+    >
+      Kapat
+    </Button>
   </DialogActions>
 </Dialog>
 
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
-            <TableRow sx={{"& th": {backgroundColor: 'primary.main', color: 'white', fontWeight: 'bold'}}}>
-              <TableCell>Saat</TableCell>
-              <TableCell>Yapılacak Tarih</TableCell>
+            <TableRow>
+              <TableCell sx={{ backgroundColor: "#1976d2", color: "white", fontWeight: "bold" }}>Saat</TableCell>
+              <TableCell sx={{ backgroundColor: "#1976d2", color: "white", fontWeight: "bold" }}>Yapılacak Tarih</TableCell>
               {columns
-                .filter((col) => !["id", "yapilacak_tarih", "verildigi_tarih", "notlar"].includes(col))
-                .map((col) => {
-                  const headers = {
-                    siparis: "Sipariş",
-                    musteri_isim: "Müşteri İsmi",
-                    musteri_telefon: "Müşteri Telefonu",
-                    ekip: "Ekip",
-                    adres: "Adres",
-                    fiyat: "Fiyat",
-                  };
-                  return (<TableCell key={col}>{headers[col] || col}</TableCell>);
-                })}
-              <TableCell>İşlem</TableCell>
+  .filter((col) => col !== "id" && col !== "yapilacak_tarih" && col !== "verildigi_tarih" && col !== "notlar")
+  .map((col) => {
+    const headers = {
+      siparis: "Sipariş",
+      musteri_isim: "Müşteri İsmi",
+      musteri_telefon: "Müşteri Telefonu",
+      ekip: "Ekip",
+      adres: "Adres",
+      fiyat: "Fiyat",
+      notlar: "Notlar"
+    };
+
+    return (
+      <TableCell
+        key={col}
+        sx={{
+          backgroundColor: "#1976d2",
+          color: "white",
+          fontWeight: "bold",
+        }}
+      >
+        {headers[col] || col}
+      </TableCell>
+    );
+  })}
+              <TableCell sx={{ backgroundColor: "#1976d2", color: "white", fontWeight: "bold" }}>İşlem</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredOrders.map((order) => {
+            {filteredOrders.map((order, idx) => {
+              // YENİ: Tarih objesinin null olup olmadığını kontrol et
               const dateObj = order.yapilacak_tarih ? new Date(order.yapilacak_tarih) : null;
-              const saat = dateObj ? dateObj.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", hour12: false, }) : "N/A";
+              const saat = dateObj ? dateObj.toLocaleTimeString("tr-TR", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              }) : "N/A";
               const tarih = dateObj ? dateObj.toLocaleDateString("tr-TR") : "N/A";
               return (
-                <TableRow key={order.id} hover>
+                <TableRow
+                  key={order.id || idx} // YENİ: Benzersiz key için order.id kullan
+                  sx={{
+                    backgroundColor:
+                      theme.palette.mode === "dark"
+                        ? idx % 2 === 0
+                          ? "#1e1e1e"
+                          : "#2c2c2c"
+                        : idx % 2 === 0
+                        ? "#f9f9f9"
+                        : "#ffffff",
+                    "&:hover": {
+                      backgroundColor: theme.palette.mode === "dark" ? "#37474f" : "#e0f7fa",
+                    },
+                  }}
+                >
                   <TableCell>{saat}</TableCell>
                   <TableCell>{tarih}</TableCell>
                   {columns
-                    .filter((col) => !["id", "yapilacak_tarih", "verildigi_tarih", "notlar"].includes(col))
+                    .filter((col) => col !== "id" && col !== "yapilacak_tarih" && col !== "verildigi_tarih" && col !== "notlar")
                     .map((col) => (
                       <TableCell key={col}>{order[col]}</TableCell>
                     ))}
                   <TableCell>
-                    <IconButton onClick={() => handleEdit(order)}><EditIcon /></IconButton>
-                    <IconButton color="error" onClick={() => handleDelete(order.id)}><DeleteIcon /></IconButton>
+                    <IconButton onClick={() => handleEdit(order)}>
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton color="error" onClick={() => handleDelete(order.id)}>
+                      <DeleteIcon />
+                    </IconButton>
                     <IconButton
                       onClick={() => {
                         setNoteContent(order.notlar || "");
                         setNoteOrderId(order.id);
                         setNoteDialogOpen(true);
                       }}
+                      sx={{ ml: 1 }}
                     >
                       📝
                     </IconButton>

@@ -16,7 +16,7 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null); // Hata mesajını temizle
+    setError(null); 
 
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
@@ -35,15 +35,17 @@ function Login() {
       if (!res.ok) {
         setError(data.detail || "Login failed");
       } else {
-        // --- YENİ EKLENEN BÖLÜM ---
-        // Başarılı girişte, backend'den gelen token'ı localStorage'a kaydet.
-        if (data.token) {
-          localStorage.setItem("authToken", data.token);
+        // --- DÜZELTİLEN BÖLÜM ---
+        // Artık 'data.token' yerine 'data.idToken' arıyoruz.
+        if (data.idToken) {
+          // 'authToken' olarak kaydetmeye devam ediyoruz, bu doğru.
+          localStorage.setItem("authToken", data.idToken);
           navigate("/home");
         } else {
+          // Eğer 'idToken' da gelmezse hata ver
           setError("Login successful, but no token received.");
         }
-        // --- YENİ BÖLÜM SONU ---
+        // --- DÜZELTİLEN BÖLÜM SONU ---
       }
     } catch (err) {
       setError("Sunucuya ulaşılamıyor.");
@@ -86,3 +88,4 @@ function Login() {
 }
 
 export default Login;
+
