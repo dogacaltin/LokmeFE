@@ -51,33 +51,63 @@ export default function Home() {
   const [noteContent, setNoteContent] = useState("");
   const [noteOrderId, setNoteOrderId] = useState(null);
   const [selectedNoteOrder, setSelectedNoteOrder] = useState(null);
-  // --- YENİ: Yükleniyor durumu eklendi ---
   const [loading, setLoading] = useState(true);
-  // --- EKLENEN BÖLÜM SONU ---
 
 
-  const handleUnauthorized = (error) => {
-    // Hatayı logla (geliştirme için)
-    console.error("Authorization Error Check:", error);
+  // --- GÜNCELLENDİ: handleUnauthorized (Daha Detaylı Loglama) ---
+  const handleUnauthorized = async (error, context = "Unknown") => { // Context eklendi
+    console.error(`Authorization Error Handler Triggered from [${context}]:`, error); // Hatanın nereden geldiğini logla
 
-    // Hatanın bir Response objesi olup olmadığını ve status kodunu kontrol et
-    const isResponse = error instanceof Response;
-    const status = isResponse ? error.status : (error.response ? error.response.status : null);
+    let status = null;
+    let errorDetail = "Bilinmeyen Hata";
+    let responseBody = null; // Yanıt gövdesini saklamak için
 
-    if (status === 401) {
-        console.log("Unauthorized (401) detected, logging out.");
-        localStorage.removeItem("authToken");
-        navigate("/");
-    } else if (isResponse) {
-        // 401 dışındaki diğer HTTP hataları için
-        console.error(`API Error: ${status} ${error.statusText}`);
-        // Kullanıcıya genel bir hata mesajı gösterilebilir
+    // Hatanın fetch'ten gelen Response objesi mi yoksa başka bir hata mı olduğunu kontrol et
+    if (error instanceof Response) {
+        status = error.status;
+        try {
+            // Yanıt gövdesini JSON olarak okumaya çalış
+            responseBody = await error.clone().json(); // .clone() önemli! Body bir kez okunabilir.
+            errorDetail = responseBody.detail || error.statusText;
+            console.error(`API Response Error: Status ${status}, Detail: ${errorDetail}`, "Response Body:", responseBody);
+        } catch (jsonError) {
+            // Yanıt gövdesi JSON değilse veya okunamıyorsa, text olarak okumayı dene
+             try {
+                 responseBody = await error.text();
+                 errorDetail = error.statusText;
+                 console.error(`API Response Error: Status ${status}, Body is not JSON. Body Text:`, responseBody);
+             } catch (textError) {
+                 errorDetail = error.statusText;
+                 console.error(`API Response Error: Status ${status}, Could not parse response body.`);
+             }
+        }
+    } else if (error.response) { // Axios gibi kütüphanelerden gelen hata
+        status = error.response.status;
+        responseBody = error.response.data;
+        errorDetail = error.response.data?.detail || error.message;
+        console.error(`Library Error Response: Status ${status}, Detail: ${errorDetail}`, "Response Data:", responseBody);
     }
-     else {
-        // Ağ hatası veya diğer JavaScript hataları
-        console.error("An unexpected error occurred:", error);
+     else { // Ağ hatası veya diğer JavaScript hataları
+        errorDetail = error.message || "Ağ hatası veya beklenmedik bir sorun.";
+        console.error("Non-HTTP Error:", errorDetail, error);
+    }
+
+    // Sadece 401 durumunda çıkış yap
+    if (status === 401) {
+        console.warn("Unauthorized (401) confirmed, logging out. Token might be expired or invalid."); // Uyarı logu
+        localStorage.removeItem("authToken");
+        // navigate("/") çağrısını daha güvenli hale getir
+        // Eğer component hala mount edilmişse yönlendir
+        // Bu genellikle useEffect cleanup içinde kontrol edilir, ama burada da bir kontrol ekleyebiliriz.
+         // Kısa bir gecikme ekleyerek navigate'in çalışmasını garantiye almayı dene (son çare)
+        setTimeout(() => navigate("/"), 50); // Çok kısa bir gecikme
+    } else {
+         console.log(`Error status ${status || 'N/A'} encountered in context [${context}], not logging out.`);
+         // Kullanıcıya genel bir hata mesajı gösterilebilir
+         // Örneğin: alert(`Bir hata oluştu: ${errorDetail}`);
     }
   };
+  // --- GÜNCELLEME SONU ---
 
   useEffect(() => {
     setLoading(true); // Yüklemeyi başlat
