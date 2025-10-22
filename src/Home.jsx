@@ -243,6 +243,29 @@ export default function Home() {
     }
   };
 
+    const handleEditPhone = (order) => {
+    setPhoneContent(order.ekstra_telefon || ""); // Backend'den gelen 'ekstra_telefon' alanını kullan
+    setPhoneOrderId(order.id);
+    setPhoneDialogOpen(true);
+  };
+
+    const handlePhoneSave = async () => {
+    const token = localStorage.getItem("authToken");
+    if (!phoneOrderId) return;
+    try {
+      // Backend'e sadece 'ekstra_telefon' alanını gönder
+      const payload = { ekstra_telefon: phoneContent };
+      const response = await fetch(`${API_URL}/orders/${phoneOrderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+       if (!response.ok) throw response;
+      // Lokal state'i güncelle
+      setOrders(prevOrders => prevOrders.map(o => o.id === phoneOrderId ? { ...o, ekstra_telefon: phoneContent } : o));
+      setPhoneDialogOpen(false); setPhoneContent(""); setPhoneOrderId(null);
+    } catch (err) { handleUnauthorized(err, "handlePhoneSave"); }
+  };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -566,6 +589,31 @@ export default function Home() {
           <Button variant="contained" onClick={handleNoteSave}>Kaydet</Button>
         </DialogActions>
       </Dialog>
+
+    {/* --- YENİ: Telefon Notları Düzenleme Formu (Dialog) --- */}
+    <Dialog open={phoneDialogOpen} onClose={() => setPhoneDialogOpen(false)} maxWidth="sm" fullWidth>
+      <DialogTitle>📞 Ekstra Telefon Numaraları</DialogTitle>
+      <DialogContent>
+          <TextField
+              autoFocus
+              margin="dense"
+              id="phone-content"
+              label="Telefon Numaraları"
+              placeholder="Numaraları virgülle ayırarak yazınız..."
+              type="text" // Telefon için özel input type'ları da kullanılabilir
+              fullWidth
+              multiline
+              rows={4} // İhtiyaca göre ayarlanabilir
+              variant="outlined"
+              value={phoneContent}
+              onChange={(e) => setPhoneContent(e.target.value)}
+          />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setPhoneDialogOpen(false)}>İptal</Button>
+        <Button variant="contained" onClick={handlePhoneSave}>Kaydet</Button>
+      </DialogActions>
+    </Dialog>
 
       {/* --- YENİ: Silme Onay Dialog'u --- */}
       <Dialog
