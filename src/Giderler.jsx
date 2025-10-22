@@ -1,6 +1,8 @@
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Paper, Stack,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography,
+  CircularProgress, // Yükleme göstergesi
+  DialogContentText // Silme onayı metni
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
@@ -15,7 +17,6 @@ import tr from "date-fns/locale/tr";
 import ThemeToggle from "./components/ThemeToggle";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-// YENİ: Çıkış ikonu eklendi
 import LogoutIcon from '@mui/icons-material/Logout';
 
 const Giderler = () => {
@@ -30,47 +31,83 @@ const Giderler = () => {
   const [newExpense, setNewExpense] = useState({ tutar: "", aciklama: "", tarih: "" });
   const [editingExpense, setEditingExpense] = useState(null);
   const [editForm, setEditForm] = useState({ tutar: "", aciklama: "", tarih: "" });
+  const [loading, setLoading] = useState(true); // Yükleniyor durumu
+  // --- YENİ: Silme onayı için state'ler ---
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState(null);
+  // --- EKLENEN BÖLÜM SONU ---
 
-  // YENİ: Yetkisiz istekleri yakalayan yardımcı fonksiyon
+
   const handleUnauthorized = (error) => {
-    if (error.response && error.response.status === 401) {
+     // Axios hataları genellikle error.response içinde gelir
+    const status = error.response ? error.response.status : null;
+    if (status === 401) {
+      console.warn("Unauthorized (401) detected in Giderler, logging out.");
       localStorage.removeItem("authToken");
+      localStorage.removeItem("authTokenTimestamp");
       navigate("/");
+    } else {
+        console.error("Giderler Error:", error);
+        // Genel hata mesajı gösterilebilir
     }
   };
 
-  // 🔄 Giderleri çek (Güvenlik eklendi)
   useEffect(() => {
-    // YENİ: Token'ı al ve kontrol et
+    let isMounted = true;
+    setLoading(true);
     const token = localStorage.getItem("authToken");
     if (!token) {
       navigate("/");
       return;
     }
-    // YENİ: Axios için standart başlık
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
     const fetchExpenses = async () => {
         try {
-            // YENİ: İsteklere authHeaders eklendi
             const res = await axios.get(`${API_URL}/expenses`, authHeaders);
-            setExpenses(res.data);
+             if (isMounted) {
+                setExpenses(res.data);
+             }
         } catch (err) {
-            console.error("Giderler alınamadı:", err);
-            handleUnauthorized(err); // YENİ: Hata yönetimi
+             if (isMounted) {
+                console.error("Giderler alınamadı:", err);
+                handleUnauthorized(err);
+             }
+        } finally {
+             if (isMounted) {
+                setLoading(false);
+             }
         }
     };
     fetchExpenses();
 
-  }, [API_URL, navigate]); // YENİ: navigate bağımlılıklara eklendi
+    return () => { isMounted = false; }; // Cleanup
 
-  // ➕ Yeni gider ekle (Güvenlik eklendi)
+  }, [API_URL, navigate]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewExpense((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleFormSubmit = async () => {
-    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
+    const payload = { ...newExpense };
+    // Tarihi ISO formatına çevir
+    if (payload.tarih) {
+        try {
+            payload.tarih = new Date(payload.tarih).toISOString();
+        } catch (e) {
+            console.error("Geçersiz tarih formatı (yeni gider):", payload.tarih);
+            return; // Hata göster
+        }
+    } else {
+        console.error("Tarih zorunludur.");
+        return; // Hata göster
+    }
+
     try {
-        // YENİ: İsteklere authHeaders eklendi
-        const res = await axios.post(`${API_URL}/expenses`, newExpense, {
+        const res = await axios.post(`${API_URL}/expenses`, payload, {
             headers: { Authorization: `Bearer ${token}` }
         });
         setExpenses((prev) => [...prev, res.data]);
@@ -78,33 +115,62 @@ const Giderler = () => {
         setNewExpense({ tutar: "", aciklama: "", tarih: "" });
     } catch(err) {
         console.error("Gider eklenemedi:", err);
-        handleUnauthorized(err); // YENİ: Hata yönetimi
+        handleUnauthorized(err);
     }
   };
 
-  // 🗑️ Gider sil (Güvenlik eklendi)
-  const handleDelete = async (id) => {
-    // YENİ: Token'ı al
+  // --- GÜNCELLENDİ: handleDelete ---
+  // Artık direkt silmek yerine onay dialog'unu açacak
+  const handleDelete = (id) => {
+    setDeletingExpenseId(id); // Silinecek ID'yi state'e kaydet
+    setDeleteConfirmOpen(true); // Onay dialog'unu aç
+  };
+  // --- GÜNCELLEME SONU ---
+
+  // --- YENİ: confirmDelete fonksiyonu ---
+  const confirmDelete = async () => {
     const token = localStorage.getItem("authToken");
+    if (!deletingExpenseId) return;
+
     try {
-        // YENİ: İsteklere authHeaders eklendi
-        await axios.delete(`${API_URL}/expenses/${id}`, {
+        await axios.delete(`${API_URL}/expenses/${deletingExpenseId}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        setExpenses((prev) => prev.filter((e) => e.id !== id));
+        setExpenses((prev) => prev.filter((e) => e.id !== deletingExpenseId));
+        setDeleteConfirmOpen(false);
+        setDeletingExpenseId(null);
     } catch(err) {
         console.error("Silme hatası:", err);
-        handleUnauthorized(err); // YENİ: Hata yönetimi
+        handleUnauthorized(err);
+        setDeleteConfirmOpen(false);
+        setDeletingExpenseId(null);
     }
   };
+  // --- EKLENEN BÖLÜM SONU ---
 
-  // 📝 Düzenleme (Fonksiyonlar aynı, sadece handleEditSave'e güvenlik eklendi)
+
   const handleEditClick = (expense) => {
     setEditingExpense(expense);
+    // Tarihi datetime-local input formatına çevir
+    let formattedDate = "";
+     if (expense.tarih) {
+        try {
+            const date = new Date(expense.tarih);
+            const year = date.getFullYear();
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            formattedDate = `${year}-${month}-${day}T${hours}:${minutes}`;
+        } catch (e) {
+             console.error("Düzenleme için tarih format hatası (gider):", e);
+        }
+    }
+
     setEditForm({
-      tutar: expense.tutar,
-      aciklama: expense.aciklama,
-      tarih: expense.tarih ? new Date(expense.tarih).toISOString().slice(0, 16) : "", // YENİ: Tarihi input formatına çevir
+      tutar: expense.tutar || "",
+      aciklama: expense.aciklama || "",
+      tarih: formattedDate,
     });
   };
 
@@ -114,11 +180,23 @@ const Giderler = () => {
   };
 
   const handleEditSave = async () => {
-    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
+    const payload = { ...editForm };
+     // Tarihi ISO formatına çevir
+    if (payload.tarih) {
+        try {
+            payload.tarih = new Date(payload.tarih).toISOString();
+        } catch (e) {
+            console.error("Geçersiz tarih formatı (gider güncelleme):", payload.tarih);
+            return; // Hata göster
+        }
+    } else {
+        console.error("Tarih zorunludur.");
+        return; // Hata göster
+    }
+
     try {
-        // YENİ: İsteklere authHeaders eklendi
-        const res = await axios.put(`${API_URL}/expenses/${editingExpense.id}`, editForm, {
+        const res = await axios.put(`${API_URL}/expenses/${editingExpense.id}`, payload, {
             headers: { Authorization: `Bearer ${token}` }
         });
         setExpenses((prev) =>
@@ -127,21 +205,19 @@ const Giderler = () => {
         setEditingExpense(null);
     } catch(err) {
         console.error("Güncelleme hatası:", err);
-        handleUnauthorized(err); // YENİ: Hata yönetimi
+        handleUnauthorized(err);
     }
   };
 
-  // Filtreleme mantığı aynı kalıyor
-  const filteredExpenses = expenses.filter((exp) => {
-    const matchesSearch = [exp.aciklama, exp.tutar?.toString()] // Sadece açıklama ve tutarda ara
+  const filteredExpenses = !loading ? expenses.filter((exp) => {
+    const matchesSearch = [exp.aciklama, exp.tutar?.toString()]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
 
-    // YENİ: Tarih alanı yoksa filtrelemeyi atla
     if (!exp.tarih) {
-        return matchesSearch && !dateFrom && !dateTo; // Tarihsizler sadece tarih filtresi yoksa görünür
+        return matchesSearch && !dateFrom && !dateTo;
     }
     const date = new Date(exp.tarih);
     const from = dateFrom ? new Date(new Date(dateFrom).setHours(0,0,0,0)) : null;
@@ -151,22 +227,25 @@ const Giderler = () => {
       (!from || date >= from) &&
       (!to || date <= to);
     return matchesSearch && matchesDate;
-  });
+  }) : []; // Yükleniyorsa boş dizi
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setNewExpense((prev) => ({ ...prev, [name]: value }));
-  };
-  
-  // YENİ: Çıkış yapma fonksiyonu
   const handleLogout = () => {
     localStorage.removeItem("authToken");
+    localStorage.removeItem("authTokenTimestamp");
     navigate("/");
   };
 
+  // Yükleniyor durumu
+  if (loading) {
+    return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <CircularProgress />
+            <Typography sx={{ ml: 2 }}>Giderler yükleniyor...</Typography>
+        </Box>
+    );
+  }
 
   return (
-    // YENİ: Ana container için Box kullanıldı (Home.js'teki gibi)
     <Box sx={{ p: 4, minHeight: "100vh", backgroundColor: theme.palette.background.default }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">📉 Giderler</Typography>
@@ -178,43 +257,51 @@ const Giderler = () => {
           <Button variant="contained" onClick={() => navigate("/home")}>
             Siparişler
           </Button>
-          {/* YENİ: Çıkış yap butonu eklendi */}
            <Button variant="contained" color="error" startIcon={<LogoutIcon />} onClick={handleLogout}>
             Çıkış Yap
           </Button>
         </Stack>
       </Stack>
 
-      {/* Arama ve Tarih Filtreleme */}
       <Stack direction="row" spacing={2} mb={3} alignItems="center">
         <TextField
           label="Ara (Açıklama/Tutar)..."
           variant="outlined"
+          size="small"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           sx={{ backgroundColor: theme.palette.mode === "dark" ? "#2c2c2c" : "#f5f5f5", borderRadius: 1, flexGrow: 1 }}
         />
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
+         <Stack direction="row" spacing={1} alignItems="center">
           <DatePicker
             label="Başlangıç Tarihi"
             value={dateFrom}
             onChange={(newValue) => setDateFrom(newValue)}
+             slotProps={{ textField: { size: 'small' } }}
           />
           <DatePicker
             label="Bitiş Tarihi"
             value={dateTo}
             onChange={(newValue) => setDateTo(newValue)}
+             slotProps={{ textField: { size: 'small' } }}
           />
           <Tooltip title="Tarih filtresini temizle">
             <IconButton color="primary" onClick={() => { setDateFrom(null); setDateTo(null); }}>
               <CleaningServicesIcon />
             </IconButton>
           </Tooltip>
+          </Stack>
         </LocalizationProvider>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+              setNewExpense({ tutar: "", aciklama: "", tarih: "" }); // Formu temizle
+              setEditingExpense(null); // Düzenleme modunda olmadığından emin ol
+              setShowForm(true);
+          }}
+          size="medium"
         >
           GİDER EKLE
         </Button>
@@ -225,9 +312,9 @@ const Giderler = () => {
         <DialogTitle>Yeni Gider</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>
-            <TextField name="tutar" label="Tutar" type="number" value={newExpense.tutar} onChange={handleInputChange} required/>
-            <TextField name="aciklama" label="Açıklama" multiline rows={2} value={newExpense.aciklama} onChange={handleInputChange} required/>
-            <TextField name="tarih" label="Tarih" type="datetime-local" InputLabelProps={{ shrink: true }} value={newExpense.tarih} onChange={handleInputChange} required/>
+            <TextField name="tutar" label="Tutar" type="number" value={newExpense.tutar} onChange={handleInputChange} required fullWidth size="small"/>
+            <TextField name="aciklama" label="Açıklama" multiline rows={2} value={newExpense.aciklama} onChange={handleInputChange} required fullWidth size="small"/>
+            <TextField name="tarih" label="Tarih" type="datetime-local" InputLabelProps={{ shrink: true }} value={newExpense.tarih} onChange={handleInputChange} required fullWidth size="small"/>
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -241,9 +328,9 @@ const Giderler = () => {
         <DialogTitle>Gideri Düzenle</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>
-            <TextField name="tutar" label="Tutar" type="number" value={editForm.tutar} onChange={handleEditChange} required/>
-            <TextField name="aciklama" label="Açıklama" multiline rows={2} value={editForm.aciklama} onChange={handleEditChange} required/>
-            <TextField name="tarih" label="Tarih" type="datetime-local" InputLabelProps={{ shrink: true }} value={editForm.tarih} onChange={handleEditChange} required/>
+            <TextField name="tutar" label="Tutar" type="number" value={editForm.tutar} onChange={handleEditChange} required fullWidth size="small"/>
+            <TextField name="aciklama" label="Açıklama" multiline rows={2} value={editForm.aciklama} onChange={handleEditChange} required fullWidth size="small"/>
+            <TextField name="tarih" label="Tarih" type="datetime-local" InputLabelProps={{ shrink: true }} value={editForm.tarih} onChange={handleEditChange} required fullWidth size="small"/>
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -252,11 +339,35 @@ const Giderler = () => {
         </DialogActions>
       </Dialog>
 
+       {/* --- YENİ: Silme Onay Dialog'u --- */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        aria-labelledby="alert-dialog-title-gider"
+        aria-describedby="alert-dialog-description-gider"
+      >
+        <DialogTitle id="alert-dialog-title-gider">
+          {"Silme Onayı"}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description-gider">
+            Bu gideri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)}>İptal</Button>
+          <Button onClick={confirmDelete} color="error" autoFocus>
+            Sil
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* --- EKLENEN BÖLÜM SONU --- */}
+
+
       {/* Giderler Tablosu */}
       <TableContainer component={Paper} sx={{ mt: 3 }}>
-        <Table>
+        <Table stickyHeader size="small">
           <TableHead>
-             {/* YENİ: Başlıklar Home.js ile uyumlu hale getirildi */}
             <TableRow sx={{"& th": {backgroundColor: 'primary.main', color: 'white', fontWeight: 'bold'}}}>
               <TableCell>Saat</TableCell>
               <TableCell>Tarih</TableCell>
@@ -266,22 +377,25 @@ const Giderler = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredExpenses.map((expense) => { // YENİ: idx kaldırıldı, key için expense.id kullanıldı
-              // YENİ: Tarih objesinin null olup olmadığını kontrol et
+            {filteredExpenses.map((expense) => {
               const dt = expense.tarih ? new Date(expense.tarih) : null;
               const saat = dt ? dt.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", hour12: false }) : "N/A";
               const tarih = dt ? dt.toLocaleDateString("tr-TR") : "N/A";
               return (
-                <TableRow key={expense.id} hover> {/* YENİ: key={expense.id} */}
+                <TableRow key={expense.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                   <TableCell>{saat}</TableCell>
                   <TableCell>{tarih}</TableCell>
-                  <TableCell>{expense.tutar ? `${expense.tutar.toLocaleString('tr-TR')} ₺` : 'N/A'}</TableCell> {/* YENİ: Formatlama */}
-                  <TableCell>{expense.aciklama}</TableCell>
+                  <TableCell>{expense.tutar ? `${expense.tutar.toLocaleString('tr-TR')} ₺` : 'N/A'}</TableCell>
+                  <TableCell>{expense.aciklama || '-'}</TableCell> {/* Açıklama yoksa '-' göster */}
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
-                      {/* YENİ: IconButton kullanıldı */}
-                      <IconButton onClick={() => handleEditClick(expense)}> <EditIcon /></IconButton>
-                      <IconButton color="error" onClick={() => handleDelete(expense.id)}> <DeleteIcon /> </IconButton>
+                    <Stack direction="row" spacing={0.5}>
+                     <Tooltip title="Düzenle">
+                      <IconButton size="small" onClick={() => handleEditClick(expense)}> <EditIcon fontSize="small"/></IconButton>
+                     </Tooltip>
+                     <Tooltip title="Sil">
+                      {/* --- GÜNCELLENDİ: handleDelete çağrısı --- */}
+                      <IconButton size="small" color="error" onClick={() => handleDelete(expense.id)}> <DeleteIcon fontSize="small"/> </IconButton>
+                     </Tooltip>
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -290,7 +404,7 @@ const Giderler = () => {
           </TableBody>
         </Table>
       </TableContainer>
-    </Box> // YENİ: </> yerine Box kapatıldı
+    </Box>
   );
 };
 
