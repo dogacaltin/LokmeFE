@@ -31,7 +31,6 @@ import { tr } from "date-fns/locale";
 import { DatePicker } from "@mui/x-date-pickers";
 import Tooltip from "@mui/material/Tooltip";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
-// YENİ: Çıkış ikonu eklendi
 import LogoutIcon from '@mui/icons-material/Logout';
 
 export default function Home() {
@@ -50,11 +49,12 @@ export default function Home() {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteContent, setNoteContent] = useState("");
   const [noteOrderId, setNoteOrderId] = useState(null);
-  
-  // YENİ: Yetkisiz istekleri yakalayan yardımcı fonksiyon
+  // --- EKSİK STATE'LER EKLENDİ ---
+  const [selectedNoteOrder, setSelectedNoteOrder] = useState(null); // Notu düzenlenen siparişin verisi
+  // --- EKLENEN BÖLÜM SONU ---
+
+
   const handleUnauthorized = (error) => {
-    // Eğer backend 401 (Unauthorized) hatası dönerse, token geçersizdir.
-    // Kullanıcıyı login sayfasına yönlendir.
     if (error.response && error.response.status === 401) {
         localStorage.removeItem("authToken");
         navigate("/");
@@ -62,22 +62,19 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // YENİ: Token'ı al ve kontrol et
     const token = localStorage.getItem("authToken");
     if (!token) {
-      navigate("/"); // Token yoksa login'e at
+      navigate("/");
       return;
     }
 
-    // YENİ: Tüm istekler için standart başlık (header)
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
     const fetchColumnsAndOrders = async () => {
       try {
-        // YENİ: İsteklere authHeaders eklendi
-        const colsRes = await fetch(`${API_URL}/orders/columns`, authHeaders); 
-        if (!colsRes.ok) throw { response: colsRes }; // Hata kontrolü
-        
+        // Kolonları çekmek için headers gerekmiyorsa kaldırılabilir
+        const colsRes = await fetch(`${API_URL}/orders/columns`, authHeaders);
+        if (!colsRes.ok) throw { response: colsRes };
         const colsJson = await colsRes.json();
         const cols = colsJson.columns.filter(
           (col) => col !== "id" && col !== "verildigi_tarih"
@@ -88,20 +85,19 @@ export default function Home() {
         cols.forEach((col) => {
           formInit[col] = "";
         });
-        setNewOrder(formInit);
+        // setNewOrder(formInit); // Başlangıçta boş olmalı, edit yapınca dolacak
 
-        // YENİ: İsteklere authHeaders eklendi
         const ordersRes = await fetch(`${API_URL}/orders`, authHeaders);
-        if (!ordersRes.ok) throw { response: ordersRes }; // Hata kontrolü
-
+        if (!ordersRes.ok) throw { response: ordersRes };
         const orderData = await ordersRes.json();
-        const sortedOrders = orderData.sort(
-          (a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)
-        );
+        // Tarih alanı olmayanları filtrele ve sırala
+        const sortedOrders = orderData
+          .filter(order => order.yapilacak_tarih) // Tarihi olmayanları sıralamadan çıkar
+          .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih));
         setOrders(sortedOrders);
       } catch (err) {
         console.error("Veri çekme hatası:", err);
-        handleUnauthorized(err); // YENİ: Hata yönetimi
+        handleUnauthorized(err);
       }
     };
     fetchColumnsAndOrders();
@@ -112,80 +108,103 @@ export default function Home() {
     setNewOrder((prev) => ({ ...prev, [name]: value }));
   };
 
+  // handleEditNote fonksiyonu zaten doğru tanımlanmış görünüyor.
   const handleEditNote = (order) => {
-    setSelectedNoteOrder(order);
+    setSelectedNoteOrder(order); // State'i güncelle
+    setNoteContent(order.notlar || ""); // Dialog içeriğini ayarla
+    setNoteOrderId(order.id); // Sipariş ID'sini sakla
     setNoteDialogOpen(true);
   };
 
+
   const handleNoteSave = async () => {
-    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
+    if (!selectedNoteOrder) return; // Seçili sipariş yoksa işlem yapma
+
     try {
-      // YENİ: İsteklere authHeaders eklendi ve URL düzeltildi
-      await fetch(`${API_URL}/orders/${selectedNoteOrder.id}`, { 
+      // API isteği için sadece notlar verisini gönder
+      const payload = { notlar: noteContent };
+
+      const response = await fetch(`${API_URL}/orders/${selectedNoteOrder.id}`, { // ID'yi selectedNoteOrder'dan al
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ notlar: selectedNoteOrder.notlar }),
+        body: JSON.stringify(payload), // Sadece notları gönder
       });
-      
-      // YENİ: authHeaders ile veri çek
-      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => 
-        res.json()
+       if (!response.ok) throw { response };
+
+      // State'i güncelle (API'den tekrar çekmek yerine)
+      setOrders(prevOrders =>
+        prevOrders.map(o =>
+          o.id === selectedNoteOrder.id ? { ...o, notlar: noteContent } : o
+        )
       );
-      setOrders(updated);
       setNoteDialogOpen(false);
+      setSelectedNoteOrder(null); // Seçili siparişi temizle
+      setNoteContent(""); // Not içeriğini temizle
+      setNoteOrderId(null); // ID'yi temizle
     } catch (err) {
       console.error("Notlar güncelleme hatası:", err);
-      handleUnauthorized(err); // YENİ: Hata yönetimi
+      handleUnauthorized(err);
     }
   };
 
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
     const url = editingId
       ? `${API_URL}/orders/${editingId}`
       : `${API_URL}/orders`;
     const method = editingId ? "PUT" : "POST";
 
+     // Yeni sipariş eklerken veya güncellerken tarih formatını kontrol et
+    const orderPayload = { ...newOrder };
+    if (orderPayload.yapilacak_tarih && typeof orderPayload.yapilacak_tarih === 'string') {
+        // Eğer tarih string ise ISO formatına çevir, değilse olduğu gibi bırak
+        try {
+            orderPayload.yapilacak_tarih = new Date(orderPayload.yapilacak_tarih).toISOString();
+        } catch (dateErr) {
+            console.error("Geçersiz tarih formatı:", orderPayload.yapilacak_tarih);
+            // Kullanıcıya hata gösterilebilir
+            return;
+        }
+    }
+
+
     try {
-      // YENİ: İsteklere authHeaders eklendi
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newOrder),
+        body: JSON.stringify(orderPayload), // Düzeltilmiş payload'u gönder
       });
+      if (!response.ok) throw { response };
+
       setShowForm(false);
       setEditingId(null);
-      // YENİ: authHeaders ile veri çek
-      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) => 
-        res.json()
-      );
-      setOrders(updated);
+
+      // Veriyi tekrar çek
+      const ordersRes = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!ordersRes.ok) throw { response: ordersRes };
+      const updated = await ordersRes.json();
+      setOrders(updated.filter(o => o.yapilacak_tarih).sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih))); // Tekrar filtrele ve sırala
     } catch (err) {
       console.error("Sipariş kaydetme hatası:", err);
-      handleUnauthorized(err); // YENİ: Hata yönetimi
+      handleUnauthorized(err);
     }
   };
 
   const handleDelete = async (id) => {
-    // YENİ: Token'ı al
     const token = localStorage.getItem("authToken");
     try {
-      // YENİ: İsteklere authHeaders eklendi
-      await fetch(`${API_URL}/orders/${id}`, { 
+      const response = await fetch(`${API_URL}/orders/${id}`, {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` } 
+          headers: { Authorization: `Bearer ${token}` }
       });
-      // YENİ: authHeaders ile veri çek
-      const updated = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } }).then((res) =>
-        res.json()
-      );
-      setOrders(updated);
+       if (!response.ok) throw { response };
+      setOrders(prevOrders => prevOrders.filter(order => order.id !== id));
     } catch (err) {
       console.error("Silme hatası:", err);
-      handleUnauthorized(err); // YENİ: Hata yönetimi
+      handleUnauthorized(err);
     }
   };
 
@@ -193,12 +212,29 @@ export default function Home() {
     const editable = { ...order };
     delete editable.id;
     delete editable.verildigi_tarih;
+
+    // Tarihi datetime-local input formatına çevir (YYYY-MM-DDTHH:mm)
+     if (editable.yapilacak_tarih) {
+        try {
+            const date = new Date(editable.yapilacak_tarih);
+            // Zaman dilimi ofsetini hesaba kat
+            const offset = date.getTimezoneOffset();
+            const localDate = new Date(date.getTime() - (offset*60*1000));
+            editable.yapilacak_tarih = localDate.toISOString().slice(0, 16);
+        } catch (e) {
+             console.error("Düzenleme için tarih formatı hatası:", e);
+             editable.yapilacak_tarih = ""; // Hata durumunda boşalt
+        }
+    } else {
+        editable.yapilacak_tarih = ""; // Tarih yoksa boşalt
+    }
+
+
     setNewOrder(editable);
     setEditingId(order.id);
     setShowForm(true);
   };
-  
-  // YENİ: Çıkış yapma fonksiyonu
+
   const handleLogout = () => {
     localStorage.removeItem("authToken");
     navigate("/");
@@ -217,50 +253,40 @@ export default function Home() {
         yapildi: yapilacakTarih && yapilacakTarih <= fiveHoursAgo,
       };
     })
-.filter((order) => {
-  // ... (filtreleme kodun aynı kalıyor) ...
-  const yapilacakTarih = order.yapilacak_tarih
-    ? new Date(order.yapilacak_tarih)
-    : null;
+    .filter((order) => {
+      const yapilacakTarih = order.yapilacak_tarih
+        ? new Date(order.yapilacak_tarih)
+        : null;
 
-  const tarih = yapilacakTarih?.getTime();
+      // Tarih alanı olmayanları filtrelemede dikkate alma veya özel bir kontrol ekle
+      if (!yapilacakTarih) {
+          // Örneğin, tarih filtresi yoksa ve arama eşleşiyorsa göster
+          if (!dateFrom && !dateTo && filterType === 'all') {
+               const stringMatch = [
+                    order.musteri_isim, order.musteri_telefon, order.siparis, order.ekip,
+               ].filter(Boolean).join(" ").toLowerCase().includes(searchQuery.toLowerCase());
+               return stringMatch;
+          }
+          return false; // Tarih filtresi varsa veya 'all' değilse gösterme
+      }
 
-  const from = dateFrom
-    ? new Date(
-        new Date(dateFrom).setHours(0, 0, 0, 0) // 00:00:00.000
-      ).getTime()
-    : null;
 
-  const to = dateTo
-    ? new Date(
-        new Date(dateTo).setHours(23, 59, 59, 999) // 23:59:59.999
-      ).getTime()
-    : null;
+      const tarih = yapilacakTarih.getTime();
+      const from = dateFrom ? new Date(new Date(dateFrom).setHours(0, 0, 0, 0)).getTime() : null;
+      const to = dateTo ? new Date(new Date(dateTo).setHours(23, 59, 59, 999)).getTime() : null;
+      const dateMatch = (!from || tarih >= from) && (!to || tarih <= to);
 
-  const dateMatch = (!from || tarih >= from) && (!to || tarih <= to);
+      const stringMatch = [
+        order.musteri_isim, order.musteri_telefon, order.siparis, order.ekip,
+      ].filter(Boolean).join(" ").toLowerCase().includes(searchQuery.toLowerCase());
 
-  const stringMatch = [
-    order.musteri_isim,
-    order.musteri_telefon,
-    order.siparis,
-    order.ekip,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .includes(searchQuery.toLowerCase());
+      const filterMatch =
+        filterType === "all" ? true : filterType === "done" ? order.yapildi : !order.yapildi;
 
-  const filterMatch =
-    filterType === "all"
-      ? true
-      : filterType === "done"
-      ? order.yapildi
-      : !order.yapildi;
-
-  return dateMatch && stringMatch && filterMatch;
-})
+      return dateMatch && stringMatch && filterMatch;
+    })
     .sort((a, b) => {
-      // YENİ: Tarih alanı yoksa çökmemesi için kontrol
+      // Sıralamada da tarih kontrolü
       if (!a.yapilacak_tarih || !b.yapilacak_tarih) return 0;
       const aTime = new Date(a.yapilacak_tarih);
       const bTime = new Date(b.yapilacak_tarih);
@@ -268,6 +294,7 @@ export default function Home() {
       if (!a.yapildi && !b.yapildi) return aTime - bTime;
       return a.yapildi ? 1 : -1;
     });
+
 
   return (
     <Box sx={{ p: 4, minHeight: "100vh", backgroundColor: theme.palette.background.default }}>
