@@ -298,40 +298,44 @@ const handleFormSubmit = async (e) => {
         if (isNaN(price)) { console.error("Invalid price format:", orderPayload.fiyat); alert("Lütfen geçerli bir fiyat girin."); return; }
         orderPayload.fiyat = price;
     } else if (orderPayload.fiyat === '') {
-        // Fiyat alanı boş bırakıldıysa veya silindiyse null gönderilebilir (backend'e bağlı)
-        orderPayload.fiyat = null; // veya 0, backend'in beklentisine göre
+        orderPayload.fiyat = null;
     }
-
 
     try {
       console.log("handleFormSubmit: Sending payload:", orderPayload);
       const response = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(orderPayload) });
       console.log(`handleFormSubmit: API response status: ${response.status}`);
       if (!response.ok) throw response;
-      const savedOrder = await response.json(); // API'den dönen güncel/yeni veriyi al
+      const savedOrder = await response.json();
       console.log("handleFormSubmit: Order saved/updated successfully:", savedOrder);
+
+      // --- BURADAN İTİBAREN DEĞİŞTİRİN ---
+      // Önceki state'i al ve güncelle
+      const currentOrders = orders; // Mevcut state'i bir değişkene al
+      let updatedList;
+      if (editingId) {
+          // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
+          updatedList = currentOrders.map(o => o.id === editingId ? savedOrder : o);
+          console.log("handleFormSubmit: Updated list after edit:", updatedList.map(o=>o.id));
+      } else {
+          // Yeni Ekleme: Yeni siparişi listeye ekle
+          updatedList = [...currentOrders, savedOrder];
+           console.log("handleFormSubmit: Updated list after add:", updatedList.map(o=>o.id));
+      }
+
+      // Güncellenmiş listeyi filtrele ve sırala
+      const sortedList = updatedList
+          .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar
+          .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
+      console.log("handleFormSubmit: List sorted:", sortedList.map(o=> ({id: o.id, date: o.yapilacak_tarih})));
+
+      // State'i ZATEN SIRALANMIŞ liste ile güncelle
+      setOrders(sortedList);
+      // --- DEĞİŞİKLİK SONU ---
 
       setShowForm(false);
       setEditingId(null);
       setNewOrder({}); // Formu temizle
-
-      // --- YENİ: State'i Yerel Olarak Güncelle ve Sırala ---
-      setOrders(prevOrders => {
-                let updatedList;
-                if (editingId) {
-                    // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
-                    updatedList = prevOrders.map(o => o.id === editingId ? savedOrder : o);
-                } else {
-                    // Yeni Ekleme: Yeni siparişi listeye ekle
-                    updatedList = [...prevOrders, savedOrder];
-                }
-                // Hem ekleme hem de düzenleme sonrası listeyi filtrele (isteğe bağlı ama iyi pratik) ve sırala
-                console.log("handleFormSubmit: Re-sorting list after update/add.");
-                return updatedList
-                    .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar (güvenlik için)
-                    .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
-            });
-      // --- GÜNCELLEME SONU ---
 
     } catch (err) { console.error(`handleFormSubmit Error (${method}):`, err); handleUnauthorized(err, "handleFormSubmit"); }
   };
