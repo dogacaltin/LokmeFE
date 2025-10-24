@@ -38,9 +38,33 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import NotificationsIcon from '@mui/icons-material/Notifications'; // Not göstergesi ikonu
 import PhoneIcon from '@mui/icons-material/Phone';
 
+// --- YENİ: Sabit Form Alanları ---
+// Yeni Sipariş ve Düzenleme formunda gösterilecek alan adları
+const ORDER_FORM_FIELDS = [
+    "siparis",
+    "yapilacak_tarih",
+    "musteri_isim",
+    "musteri_telefon",
+    "ekip",
+    "adres",
+    "fiyat",
+    "notlar"
+];
+// --- EKLENEN BÖLÜM SONU ---
+
+// İsteğe bağlı: Tabloda kullanılacak sütunlar (tarih ve notlar hariç)
+const TABLE_COLUMNS = [
+    "siparis",
+    "musteri_isim",
+    "musteri_telefon",
+    "ekip",
+    "adres",
+    "fiyat",
+];
+
+
 export default function Home() {
   const API_URL = process.env.REACT_APP_API_URL;
-  const [columns, setColumns] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [newOrder, setNewOrder] = useState({});
@@ -141,60 +165,35 @@ export default function Home() {
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
     console.log("useEffect: Preparing to fetch data with token.");
 
-    const fetchColumnsAndOrders = async () => {
+    const fetchOrders = async () => { // Sadece fetchOrders kaldı
       try {
-        console.log("useEffect: Fetching columns...");
-        const colsPromise = fetch(`${API_URL}/orders/columns`, authHeaders);
         console.log("useEffect: Fetching orders...");
-        const ordersPromise = fetch(`${API_URL}/orders`, authHeaders);
-
-        const [colsRes, ordersRes] = await Promise.all([colsPromise, ordersPromise]);
-        console.log("useEffect: Fetch responses received. Columns Status:", colsRes.status, "Orders Status:", ordersRes.status);
+        const ordersRes = await fetch(`${API_URL}/orders`, authHeaders);
+        console.log("useEffect: Orders response received. Status:", ordersRes.status);
 
         if (isMounted) {
-            console.log("useEffect: Component is mounted, checking responses...");
-            if (!colsRes.ok) {
-                console.error("useEffect: Columns fetch failed!");
-                throw colsRes;
-            }
             if (!ordersRes.ok) {
-                 console.error("useEffect: Orders fetch failed!");
+                console.error("useEffect: Orders fetch failed!");
                 throw ordersRes;
             }
-
-            console.log("useEffect: Both fetches successful, processing data...");
-            const colsJson = await colsRes.json();
-            const cols = colsJson.columns.filter(
-              (col) => col !== "id" && col !== "verildigi_tarih"
-            );
-            setColumns(cols);
-
             const orderData = await ordersRes.json();
+            console.log("useEffect: Orders data received, processing...");
             const sortedOrders = orderData
               .filter(order => order.yapilacak_tarih)
               .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih));
             setOrders(sortedOrders);
-            console.log("useEffect: Data processed and state updated successfully.");
-
-        } else {
-             console.log("useEffect: Component unmounted before processing responses.");
+            console.log("useEffect: State updated successfully.");
         }
-
+        // '/orders/columns' ile ilgili kodlar buradan silindi.
       } catch (err) {
-        console.error("useEffect: Error during fetch process (before handleUnauthorized):", err);
-         if (isMounted) {
-            console.log("useEffect: Calling handleUnauthorized due to fetch error.");
-            handleUnauthorized(err, "useEffect fetch");
-         }
+         console.error("useEffect: Error during fetchOrders:", err);
+         if (isMounted) { handleUnauthorized(err, "useEffect fetchOrders"); }
       } finally {
-         if (isMounted) {
-            console.log("useEffect: Fetch process finished, setting loading to false.");
-            setLoading(false);
-         }
+         if (isMounted) { console.log("useEffect: Setting loading to false."); setLoading(false); }
       }
     };
 
-    fetchColumnsAndOrders();
+    fetchOrders();
 
     return () => {
         console.log("useEffect: Cleanup function called, component unmounting.");
@@ -529,7 +528,7 @@ export default function Home() {
           <DialogTitle>{editingId ? "Siparişi Güncelle" : "Yeni Sipariş"}</DialogTitle>
           <DialogContent>
             <Stack spacing={2} mt={1}>
-              {columns.map((col) => (
+              {ORDER_FORM_FIELDS.map((col) => (
                 <TextField
                   key={col}
                   name={col}
