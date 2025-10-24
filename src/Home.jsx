@@ -651,7 +651,7 @@ export default function Home() {
               <TableRow sx={{"& th": {backgroundColor: 'primary.main', color: 'white', fontWeight: 'bold'}}}>
                 <TableCell>Saat</TableCell>
                 <TableCell>Yapılacak Tarih</TableCell>
-                {columns
+                {ORDER_FORM_FIELDS
                   .filter((col) => !["id", "yapilacak_tarih", "verildigi_tarih", "notlar"].includes(col))
                   .map((col) => {
                     const headers = {
@@ -683,7 +683,7 @@ export default function Home() {
                   <TableRow key={order.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                     <TableCell>{saat}</TableCell>
                     <TableCell>{tarih}</TableCell>
-                    {columns
+                    {ORDER_FORM_FIELDS
                       .filter((col) => !["id", "yapilacak_tarih", "verildigi_tarih", "notlar"].includes(col))
                       .map((col) => (
                         <TableCell key={col}>
