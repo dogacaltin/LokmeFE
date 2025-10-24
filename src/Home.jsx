@@ -37,6 +37,9 @@ import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 import LogoutIcon from '@mui/icons-material/Logout';
 import NotificationsIcon from '@mui/icons-material/Notifications'; // Not göstergesi ikonu
 import PhoneIcon from '@mui/icons-material/Phone';
+import * as XLSX from 'xlsx';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import { format, startOfDay } from 'date-fns'; // format ve startOfDay eklenmeli
 
 // --- YENİ: Sabit Form Alanları ---
 // Yeni Sipariş ve Düzenleme formunda gösterilecek alan adları
@@ -314,19 +317,20 @@ const handleFormSubmit = async (e) => {
 
       // --- YENİ: State'i Yerel Olarak Güncelle ve Sırala ---
       setOrders(prevOrders => {
-          let updatedList;
-          if (editingId) {
-              // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
-              updatedList = prevOrders.map(o => o.id === editingId ? savedOrder : o);
-          } else {
-              // Yeni Ekleme: Yeni siparişi listeye ekle
-              updatedList = [...prevOrders, savedOrder];
-          }
-          // Hem ekleme hem de düzenleme sonrası listeyi filtrele ve sırala
-          return updatedList
-              .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar
-              .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
-      });
+                let updatedList;
+                if (editingId) {
+                    // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
+                    updatedList = prevOrders.map(o => o.id === editingId ? savedOrder : o);
+                } else {
+                    // Yeni Ekleme: Yeni siparişi listeye ekle
+                    updatedList = [...prevOrders, savedOrder];
+                }
+                // Hem ekleme hem de düzenleme sonrası listeyi filtrele (isteğe bağlı ama iyi pratik) ve sırala
+                console.log("handleFormSubmit: Re-sorting list after update/add.");
+                return updatedList
+                    .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar (güvenlik için)
+                    .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
+            });
       // --- GÜNCELLEME SONU ---
 
     } catch (err) { console.error(`handleFormSubmit Error (${method}):`, err); handleUnauthorized(err, "handleFormSubmit"); }
@@ -400,6 +404,45 @@ const handleFormSubmit = async (e) => {
     localStorage.removeItem("authTokenTimestamp");
     navigate("/");
   };
+
+  // --- YENİ: Excel Dışa Aktarma Fonksiyonu ---
+  const exportToExcel = (dataToExport, filename = "siparisler.xlsx") => {
+    console.log("exportToExcel: Starting export...");
+    if (!dataToExport || dataToExport.length === 0) {
+        alert("Dışa aktarılacak sipariş bulunamadı."); return;
+    }
+    const todayStart = startOfDay(new Date()); // Bugünün başlangıcı
+    const filteredData = dataToExport.filter(order => {
+        if (!order.yapilacak_tarih) return false;
+        try { return new Date(order.yapilacak_tarih) >= todayStart; }
+        catch (e) { return false; }
+    });
+    if (filteredData.length === 0) {
+        alert("Bugün ve sonrası için dışa aktarılacak sipariş bulunamadı."); return;
+    }
+    const formattedData = filteredData.map(order => ({ // Başlıkları ve formatı ayarla
+        'ID': order.id,
+        'Sipariş': order.siparis,
+        'Yapılacak Tarih': order.yapilacak_tarih ? format(new Date(order.yapilacak_tarih), 'dd.MM.yyyy HH:mm', { locale: tr }) : '',
+        'Müşteri İsmi': order.musteri_isim,
+        'Müşteri Telefonu': order.musteri_telefon,
+        'Ekip': order.ekip,
+        'Adres': order.adres,
+        'Fiyat (₺)': order.fiyat,
+        'Notlar': order.notlar,
+        'Ekstra Telefon': order.ekstra_telefon,
+        'Verildiği Tarih': order.verildigi_tarih ? format(new Date(order.verildigi_tarih), 'dd.MM.yyyy HH:mm', { locale: tr }) : '',
+    }));
+    try {
+        const ws = XLSX.utils.json_to_sheet(formattedData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Siparişler");
+        const exportFilename = `siparisler_bugun_ve_sonrasi_${format(new Date(), 'yyyyMMdd')}.xlsx`;
+        XLSX.writeFile(wb, exportFilename);
+        console.log("exportToExcel: File download initiated.");
+    } catch (excelError) { console.error("Excel Error:", excelError); alert("Excel dosyası oluşturulamadı."); }
+  };
+  // --- FONKSİYON SONU ---
 
     const now = new Date();
     const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000);
@@ -540,6 +583,19 @@ const handleFormSubmit = async (e) => {
           <Button size="small" variant={filterType === "done" ? "contained" : "outlined"} onClick={() => setFilterType("done")} color="success">
             Geçmiş Siparişler
           </Button>
+          <Tooltip title="Bugünün ve Gelecekteki Siparişleri Excel'e Aktar">
+         <Button
+            size="small"
+            variant="contained"
+            color="secondary" // Farklı bir renk
+            startIcon={<FileDownloadIcon />}
+            onClick={() => exportToExcel(orders)} // Tüm 'orders' state'ini gönder
+            disabled={loading || orders.length === 0} // Veri yoksa pasif
+            sx={{ ml: 'auto' }} // Sağa yasla
+         >
+            Excel'e Aktar (Bugün+)
+         </Button>
+      </Tooltip>
         </Stack>
 
        {/* Yeni/Düzenle Sipariş Formu (Dialog) */}
