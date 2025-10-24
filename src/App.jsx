@@ -6,6 +6,7 @@ import Login from "./Login";
 import Home from "./Home";
 import Giderler from "./Giderler";
 import Dashboard from "./Dashboard";
+import Planner from "./Planner";
 
 /**
  * A wrapper component to protect routes that require authentication.
@@ -40,6 +41,14 @@ function App() {
           element={
             <PrivateRoute>
               <Giderler />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/planner"
+          element={
+            <PrivateRoute>
+              <Planner />
             </PrivateRoute>
           }
         />

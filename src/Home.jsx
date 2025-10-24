@@ -451,6 +451,9 @@ export default function Home() {
           <Typography variant="h4">📦 Sipariş Listesi</Typography>
           <Stack direction="row" spacing={1}>
             <ThemeToggle />
+            <Button variant="contained" color="primary" onClick={() => navigate("/planner")}>
+              Takvim
+            </Button>
             <Button variant="contained" startIcon={<BarChartIcon />} onClick={() => navigate("/dashboard")}>
               Dashboard
             </Button>
@@ -499,7 +502,7 @@ export default function Home() {
             startIcon={<AddIcon />}
             onClick={() => {
                 const formInit = {};
-                columns.forEach((col) => { formInit[col] = ""; });
+                ORDER_FORM_FIELDS.forEach((col) => { formInit[col] = ""; });
                 setNewOrder(formInit);
                 setEditingId(null);
                 setShowForm(true);
