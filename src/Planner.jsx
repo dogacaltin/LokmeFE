@@ -23,13 +23,21 @@ import DownloadIcon from '@mui/icons-material/Download'; // İndirme ikonu
 const OrderCard = ({ order, theme }) => {
   const dateObj = order.yapilacak_tarih ? parseISO(order.yapilacak_tarih) : null;
   const saat = dateObj ? format(dateObj, 'HH:mm', { locale: tr }) : 'N/A';
-  const longTextStyle = { wordBreak: 'break-word', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', maxWidth: '100%' };
+
+  // Uzun metinler için stil
+  const longTextStyle = {
+      wordBreak: 'break-word', // Kelimeleri kırarak alt satıra geçir (en önemlisi bu)
+      whiteSpace: 'pre-wrap',  // Boşlukları ve satır sonlarını koru (textarea gibi davranır)
+      overflowWrap: 'break-word', // Taşmayı önlemek için ek güvenlik
+      maxWidth: '100%', // Kartın genişliğini aşma
+      lineHeight: 1.4, // Satır yüksekliğini biraz artır
+  };
 
   return (
     <Paper elevation={3} sx={{ p: 2, mb: 2, backgroundColor: theme.palette.mode === 'dark' ? '#333' : '#f9f9f9', borderLeft: `5px solid ${theme.palette.primary.main}`, borderRadius: '8px' }}>
       <Typography variant="subtitle1" fontWeight="bold" sx={longTextStyle}> {saat} - {order.siparis || 'Bilinmeyen Sipariş'} </Typography>
       <Typography variant="body2" sx={longTextStyle}>Müşteri: {order.musteri_isim || '-'}</Typography>
-      <Typography variant="body2">Telefon: {order.musteri_telefon || '-'}</Typography>
+      <Typography variant="body2" sx={longTextStyle}>Telefon: {order.musteri_telefon || '-'}</Typography> {/* Telefon da uzun olabilir */}
       {order.ekstra_telefon && ( <Typography variant="body2" sx={{ ...longTextStyle, color: theme.palette.info.main }}>Ekstra Tel: {order.ekstra_telefon}</Typography> )}
       <Typography variant="body2" sx={longTextStyle}>Adres: {order.adres || '-'}</Typography>
       <Typography variant="body2">Fiyat: {order.fiyat ? `${order.fiyat.toLocaleString('tr-TR')} ₺` : '-'}</Typography>
@@ -37,6 +45,8 @@ const OrderCard = ({ order, theme }) => {
     </Paper>
   );
 };
+// --- GÜNCELLEME SONU ---
+
 
 export default function Planner() {
   const API_URL = process.env.REACT_APP_API_URL || "";
@@ -99,28 +109,82 @@ export default function Planner() {
   const goToToday = () => { setSelectedDate(startOfDay(new Date())); };
 
   // PDF İndirme Fonksiyonu
-  const handleDownloadPDF = async () => {
-    if (!plannerContentRef.current || isDownloading) return;
-    setIsDownloading(true); const content = plannerContentRef.current;
+const handleDownloadPDF = async () => {
+    if (!plannerContentRef.current || isDownloading || teams.length === 0) return;
+
+    setIsDownloading(true);
+    const contentToCapture = plannerContentRef.current; // PDF'e dönüştürülecek ana container
     const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : 'tarihsiz';
     const filename = `gunluk_plan_${dateStr}.pdf`;
-    const originalHeight = content.style.height; const scrollHeight = content.scrollHeight; content.style.height = `${scrollHeight}px`; // Tam yüksekliği ayarla
 
-    // Sayfa başlığını da PDF'e eklemek için geçici olarak içeriğe ekle
-    const headerElement = document.createElement('div');
-    headerElement.innerHTML = `<h2 style="text-align: center; margin-bottom: 20px;">🗓️ Günün Planı - ${selectedDateFormatted}</h2>`;
-    content.insertBefore(headerElement, content.firstChild); // Başlığı en üste ekle
+    // İçeriğin orijinal stilini kaydet
+    const originalStyle = {
+        overflow: contentToCapture.style.overflow,
+        height: contentToCapture.style.height,
+        width: contentToCapture.style.width,
+        position: contentToCapture.style.position,
+        left: contentToCapture.style.left,
+        top: contentToCapture.style.top
+    };
+
+    // Ekran dışındaki içeriği de yakalamak için geçici ayarlar
+    // html2canvas'in tüm içeriği görmesini sağla
+    window.scrollTo(0,0); // En üste scroll yap
+    contentToCapture.style.overflow = 'visible'; // Scrollbarları kaldır
+    contentToCapture.style.height = 'auto'; // Yüksekliği içeriğe göre ayarla
+    contentToCapture.style.width = '100%'; // Genişliği ayarla (gerekirse)
+
+    // PDF başlığını görünür yap (sadece canvas yakalama sırasında)
+    const pdfHeader = contentToCapture.querySelector('.pdf-header');
+    if (pdfHeader) pdfHeader.style.display = 'block';
 
     try {
-      const canvas = await html2canvas(content, { scale: 2, useCORS: true, logging: false, scrollY: -window.scrollY });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'p', unit: 'px', format: [canvas.width, canvas.height] });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      pdf.save(filename);
-    } catch (error) { console.error("PDF oluşturulurken hata:", error); alert("PDF oluşturulurken bir hata oluştu."); }
-    finally { content.style.height = originalHeight; content.removeChild(headerElement); setIsDownloading(false); } // Yüksekliği geri al, başlığı kaldır, indirme bitti
-  };
+      // İçeriği yakala
+      const canvas = await html2canvas(contentToCapture, {
+        scale: 1.5, // Çözünürlüğü biraz artır (daha büyük dosya boyutu)
+        useCORS: true,
+        logging: false,
+        windowWidth: contentToCapture.scrollWidth, // Tam genişliği kullan
+        windowHeight: contentToCapture.scrollHeight, // Tam yüksekliği kullan
+        scrollX: 0,
+        scrollY: 0
+      });
 
+       // PDF başlığını tekrar gizle
+       if (pdfHeader) pdfHeader.style.display = 'none';
+
+      // Canvas boyutlarına göre PDF oluştur
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      // Standart A4 boyutuna sığdırmaya çalışalım (portre modunda)
+      // A4 boyutları (yaklaşık olarak piksel - kaliteye bağlı): 595 x 842 pt -> ~794 x 1123 px (96 DPI)
+      // Bizim canvas boyutumuzu A4 oranına göre ölçekleyelim
+      const pdfWidth = 794; // A4 genişliği (px)
+      const pdfHeight = (imgHeight * pdfWidth) / imgWidth; // Oranı koruyarak yüksekliği hesapla
+
+      const pdf = new jsPDF({
+        orientation: pdfHeight > pdfWidth ? 'p' : 'l', // Yüksekliğe göre yönlendirme
+        unit: 'px',
+        format: [pdfWidth, pdfHeight] // Hesaplanan boyutu kullan
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight); // Ölçeklenmiş boyutta ekle
+      pdf.save(filename);
+
+    } catch (error) {
+      console.error("PDF oluşturulurken hata:", error);
+      alert("PDF oluşturulurken bir hata oluştu.");
+    } finally {
+      // Orijinal stilleri geri yükle
+      contentToCapture.style.overflow = originalStyle.overflow;
+      contentToCapture.style.height = originalStyle.height;
+      contentToCapture.style.width = originalStyle.width;
+       if (pdfHeader) pdfHeader.style.display = 'none'; // Başlığı gizlediğinden emin ol
+      setIsDownloading(false);
+    }
+  };
+  // --- GÜNCELLEME SONU ---
   // Yükleniyor durumu
   if (loading) { return (<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /><Typography sx={{ ml: 2 }}>Plan yükleniyor...</Typography></Box>); }
 
@@ -165,9 +229,9 @@ export default function Planner() {
       {teams.length === 0 && !loading ? (
            <Typography sx={{mt: 4, textAlign: 'center'}}>Seçili gün için planlanmış sipariş bulunmamaktadır.</Typography>
        ) : (
-      <Box ref={plannerContentRef}> {/* PDF içeriği için Box'a ref verildi */}
-          {/* PDF içinde görünecek başlık (Gizli ama PDF'te çıkacak) */}
-          {/* Gerçek başlık yukarıda, bu sadece PDF için */}
+      // --- GÜNCELLENDİ: PDF içeriği için Box'a ref verildi ---
+      <Box ref={plannerContentRef} sx={{ width: '100%', overflow: 'hidden' }}> {/* PDF için stil */}
+          {/* PDF içinde görünecek başlık (Gizli) */}
           <Typography variant="h5" component="h2" sx={{ mb: 3, textAlign: 'center', display: 'none' }} className="pdf-header">
              🗓️ Günün Planı - {selectedDateFormatted}
           </Typography>
@@ -186,6 +250,7 @@ export default function Planner() {
             ))}
           </Grid>
       </Box>
+      // --- GÜNCELLEME SONU ---
        )}
     </Box>
   );
