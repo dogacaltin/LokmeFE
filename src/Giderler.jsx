@@ -251,6 +251,9 @@ const Giderler = () => {
         <Typography variant="h4">📉 Giderler</Typography>
         <Stack direction="row" spacing={1}>
           <ThemeToggle />
+          <Button variant="contained" color="primary" onClick={() => navigate("/planner")}>
+            Takvim
+          </Button>
           <Button variant="contained" startIcon={<BarChartIcon />} onClick={() => navigate("/dashboard")}>
             Dashboard
           </Button>
