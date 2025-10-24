@@ -77,6 +77,7 @@ export default function Home() {
   const theme = useTheme();
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteContent, setNoteContent] = useState("");
+  const [columns, setColumns] = useState([]);
   const [noteOrderId, setNoteOrderId] = useState(null);
   const [selectedNoteOrder, setSelectedNoteOrder] = useState(null);
   const [loading, setLoading] = useState(true);
