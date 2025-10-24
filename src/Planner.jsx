@@ -19,25 +19,20 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import DownloadIcon from '@mui/icons-material/Download'; // İndirme ikonu
 
-// Sipariş Kartı Component'i (Text Wrapping ile)
+// --- GÜNCELLENDİ: OrderCard (Text Wrapping için stiller + width) ---
 const OrderCard = ({ order, theme }) => {
   const dateObj = order.yapilacak_tarih ? parseISO(order.yapilacak_tarih) : null;
   const saat = dateObj ? format(dateObj, 'HH:mm', { locale: tr }) : 'N/A';
-
-  // Uzun metinler için stil
   const longTextStyle = {
-      wordBreak: 'break-word', // Kelimeleri kırarak alt satıra geçir (en önemlisi bu)
-      whiteSpace: 'pre-wrap',  // Boşlukları ve satır sonlarını koru (textarea gibi davranır)
-      overflowWrap: 'break-word', // Taşmayı önlemek için ek güvenlik
-      maxWidth: '100%', // Kartın genişliğini aşma
-      lineHeight: 1.4, // Satır yüksekliğini biraz artır
+      wordBreak: 'break-word', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', maxWidth: '100%', lineHeight: 1.4,
   };
 
   return (
-    <Paper elevation={3} sx={{ p: 2, mb: 2, backgroundColor: theme.palette.mode === 'dark' ? '#333' : '#f9f9f9', borderLeft: `5px solid ${theme.palette.primary.main}`, borderRadius: '8px' }}>
+    // Paper'a width: '100%' eklendi
+    <Paper elevation={3} sx={{ width: '100%', p: 2, mb: 2, backgroundColor: theme.palette.mode === 'dark' ? '#333' : '#f9f9f9', borderLeft: `5px solid ${theme.palette.primary.main}`, borderRadius: '8px' }}>
       <Typography variant="subtitle1" fontWeight="bold" sx={longTextStyle}> {saat} - {order.siparis || 'Bilinmeyen Sipariş'} </Typography>
       <Typography variant="body2" sx={longTextStyle}>Müşteri: {order.musteri_isim || '-'}</Typography>
-      <Typography variant="body2" sx={longTextStyle}>Telefon: {order.musteri_telefon || '-'}</Typography> {/* Telefon da uzun olabilir */}
+      <Typography variant="body2" sx={longTextStyle}>Telefon: {order.musteri_telefon || '-'}</Typography>
       {order.ekstra_telefon && ( <Typography variant="body2" sx={{ ...longTextStyle, color: theme.palette.info.main }}>Ekstra Tel: {order.ekstra_telefon}</Typography> )}
       <Typography variant="body2" sx={longTextStyle}>Adres: {order.adres || '-'}</Typography>
       <Typography variant="body2">Fiyat: {order.fiyat ? `${order.fiyat.toLocaleString('tr-TR')} ₺` : '-'}</Typography>
@@ -60,7 +55,7 @@ export default function Planner() {
 
   // Yetkisiz istekleri yakalayan fonksiyon
   const handleUnauthorized = async (error, context = "Unknown") => {
-    console.error(`Authorization Error Handler Triggered from [${context}]:`, error);
+     console.error(`Authorization Error Handler Triggered from [${context}]:`, error);
     let status = null; let errorDetail = "Bilinmeyen Hata";
     if (error instanceof Response) { status = error.status; try { const rb = await error.clone().json(); errorDetail = rb.detail || error.statusText; console.error(`API Response Error: Status ${status}, Detail: ${errorDetail}`, "Response Body:", rb); } catch (e) { try { const rt = await error.text(); errorDetail = rt || error.statusText; console.error(`API Response Error: Status ${status}, Body is not JSON. Body Text:`, rt); } catch (e2) { errorDetail = error.statusText; console.error(`API Response Error: Status ${status}, Could not parse response body.`);} } }
     else if (error.response) { status = error.response.status; errorDetail = error.response.data?.detail || error.message; console.error(`Library Error Response: Status ${status}, Detail: ${errorDetail}`, "Response Data:", error.response.data); }
@@ -108,83 +103,93 @@ export default function Planner() {
   const goToNextDay = () => { setSelectedDate(prev => prev ? addDays(prev, 1) : null); };
   const goToToday = () => { setSelectedDate(startOfDay(new Date())); };
 
-  // PDF İndirme Fonksiyonu
-const handleDownloadPDF = async () => {
+  // --- GÜNCELLENDİ: PDF İndirme Fonksiyonu (A4 Boyutlandırma ve Çoklu Sayfa) ---
+  const handleDownloadPDF = async () => {
     if (!plannerContentRef.current || isDownloading || teams.length === 0) return;
 
     setIsDownloading(true);
-    const contentToCapture = plannerContentRef.current; // PDF'e dönüştürülecek ana container
+    const contentToCapture = plannerContentRef.current;
     const dateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : 'tarihsiz';
     const filename = `gunluk_plan_${dateStr}.pdf`;
 
-    // İçeriğin orijinal stilini kaydet
-    const originalStyle = {
-        overflow: contentToCapture.style.overflow,
-        height: contentToCapture.style.height,
-        width: contentToCapture.style.width,
-        position: contentToCapture.style.position,
-        left: contentToCapture.style.left,
-        top: contentToCapture.style.top
-    };
-
-    // Ekran dışındaki içeriği de yakalamak için geçici ayarlar
-    // html2canvas'in tüm içeriği görmesini sağla
-    window.scrollTo(0,0); // En üste scroll yap
-    contentToCapture.style.overflow = 'visible'; // Scrollbarları kaldır
-    contentToCapture.style.height = 'auto'; // Yüksekliği içeriğe göre ayarla
-    contentToCapture.style.width = '100%'; // Genişliği ayarla (gerekirse)
-
-    // PDF başlığını görünür yap (sadece canvas yakalama sırasında)
+    // PDF başlığını görünür yap
     const pdfHeader = contentToCapture.querySelector('.pdf-header');
     if (pdfHeader) pdfHeader.style.display = 'block';
 
     try {
-      // İçeriği yakala
-      const canvas = await html2canvas(contentToCapture, {
-        scale: 1.5, // Çözünürlüğü biraz artır (daha büyük dosya boyutu)
-        useCORS: true,
-        logging: false,
-        windowWidth: contentToCapture.scrollWidth, // Tam genişliği kullan
-        windowHeight: contentToCapture.scrollHeight, // Tam yüksekliği kullan
-        scrollX: 0,
-        scrollY: 0
-      });
+        const canvas = await html2canvas(contentToCapture, {
+            scale: 2, // Kalite için ölçek
+            useCORS: true,
+            logging: false,
+            // scrollY: -window.scrollY // Bu bazen sorun yaratabilir, kaldırıldı
+            width: contentToCapture.scrollWidth, // Tam genişliği al
+            height: contentToCapture.scrollHeight, // Tam yüksekliği al
+            windowWidth: contentToCapture.scrollWidth,
+            windowHeight: contentToCapture.scrollHeight
+        });
 
-       // PDF başlığını tekrar gizle
-       if (pdfHeader) pdfHeader.style.display = 'none';
+        // PDF başlığını tekrar gizle
+        if (pdfHeader) pdfHeader.style.display = 'none';
 
-      // Canvas boyutlarına göre PDF oluştur
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      // Standart A4 boyutuna sığdırmaya çalışalım (portre modunda)
-      // A4 boyutları (yaklaşık olarak piksel - kaliteye bağlı): 595 x 842 pt -> ~794 x 1123 px (96 DPI)
-      // Bizim canvas boyutumuzu A4 oranına göre ölçekleyelim
-      const pdfWidth = 794; // A4 genişliği (px)
-      const pdfHeight = (imgHeight * pdfWidth) / imgWidth; // Oranı koruyarak yüksekliği hesapla
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
 
-      const pdf = new jsPDF({
-        orientation: pdfHeight > pdfWidth ? 'p' : 'l', // Yüksekliğe göre yönlendirme
-        unit: 'px',
-        format: [pdfWidth, pdfHeight] // Hesaplanan boyutu kullan
-      });
+        // jsPDF'i A4 boyutunda (pt birimiyle) başlat
+        const pdf = new jsPDF({
+            orientation: 'p', // portrait
+            unit: 'pt',
+            format: 'a4'
+        });
 
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight); // Ölçeklenmiş boyutta ekle
-      pdf.save(filename);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        // Resmin A4'e sığacak şekilde boyutunu ve oranını hesapla
+        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+        const imgScaledWidth = imgWidth * ratio;
+        const imgScaledHeight = imgHeight * ratio;
+
+        // Sayfa kenar boşlukları (isteğe bağlı)
+        const margin = 20; // pt cinsinden
+        const usableWidth = pdfWidth - 2 * margin;
+        const usableHeight = pdfHeight - 2 * margin;
+
+        // Resmin oranını koruyarak sığdırılacak boyutları tekrar hesapla
+        let finalImgWidth = imgWidth;
+        let finalImgHeight = imgHeight;
+        if (imgWidth > usableWidth) {
+            finalImgWidth = usableWidth;
+            finalImgHeight = (imgHeight * usableWidth) / imgWidth;
+        }
+        if (finalImgHeight > usableHeight) {
+            finalImgHeight = usableHeight;
+            finalImgWidth = (imgWidth * usableHeight) / imgHeight;
+        }
+
+        // Resmi ortalamak için pozisyonları hesapla
+        const xPos = margin + (usableWidth - finalImgWidth) / 2;
+        const yPos = margin + (usableHeight - finalImgHeight) / 2;
+
+
+        // Resmi PDF'e ekle (şimdilik tek sayfa)
+        // Eğer içerik çok uzunsa, resmi bölüp birden fazla sayfaya eklemek gerekir.
+        // Bu daha karmaşık bir mantık gerektirir. Şimdilik A4'e sığdırmaya çalışıyoruz.
+        pdf.addImage(imgData, 'PNG', xPos, yPos, finalImgWidth, finalImgHeight);
+        pdf.save(filename);
 
     } catch (error) {
-      console.error("PDF oluşturulurken hata:", error);
-      alert("PDF oluşturulurken bir hata oluştu.");
+        console.error("PDF oluşturulurken hata:", error);
+        alert("PDF oluşturulurken bir hata oluştu.");
     } finally {
-      // Orijinal stilleri geri yükle
-      contentToCapture.style.overflow = originalStyle.overflow;
-      contentToCapture.style.height = originalStyle.height;
-      contentToCapture.style.width = originalStyle.width;
-       if (pdfHeader) pdfHeader.style.display = 'none'; // Başlığı gizlediğinden emin ol
-      setIsDownloading(false);
+        // Orijinal stilleri geri yüklemek yerine, sadece başlığı gizle
+        if (pdfHeader) pdfHeader.style.display = 'none';
+        setIsDownloading(false);
     }
   };
   // --- GÜNCELLEME SONU ---
+
+
   // Yükleniyor durumu
   if (loading) { return (<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress /><Typography sx={{ ml: 2 }}>Plan yükleniyor...</Typography></Box>); }
 
@@ -196,7 +201,7 @@ const handleDownloadPDF = async () => {
       <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" alignItems="center" mb={3} spacing={2}>
         {/* Tarih Seçici ve Kontroller */}
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-            <Typography variant="h6" component="h1" sx={{ mr: 1, whiteSpace: 'nowrap' }}>🗓️ Plan:</Typography> {/* Başlık küçültüldü */}
+            <Typography variant="h6" component="h1" sx={{ mr: 1, whiteSpace: 'nowrap' }}>🗓️ Plan:</Typography>
             <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
                 <DatePicker label="Tarih" value={selectedDate} onChange={handleDateChange} slotProps={{ textField: { size: 'small' } }} format="dd/MM/yyyy"/>
                  <Tooltip title="Önceki Gün"><IconButton onClick={goToPreviousDay} size="small"><ArrowBackIosNewIcon fontSize="inherit"/></IconButton></Tooltip>
@@ -222,17 +227,14 @@ const handleDownloadPDF = async () => {
         </Stack>
       </Stack>
 
-      {/* Seçili Tarih Başlığı (PDF'e eklemek için Grid'in dışına alındı) */}
-      {/* <Typography variant="h5" component="h2" sx={{ mb: 3, textAlign: 'center' }}>{selectedDateFormatted}</Typography> */}
-
       {/* Ekip Sütunları (PDF'e eklenecek içerik) */}
       {teams.length === 0 && !loading ? (
            <Typography sx={{mt: 4, textAlign: 'center'}}>Seçili gün için planlanmış sipariş bulunmamaktadır.</Typography>
        ) : (
-      // --- GÜNCELLENDİ: PDF içeriği için Box'a ref verildi ---
-      <Box ref={plannerContentRef} sx={{ width: '100%', overflow: 'hidden' }}> {/* PDF için stil */}
+      // PDF içeriği için Box'a ref verildi
+      <Box ref={plannerContentRef} sx={{ width: '100%', overflow: 'hidden', backgroundColor: theme.palette.background.default }}> {/* Arkaplan rengi eklendi */}
           {/* PDF içinde görünecek başlık (Gizli) */}
-          <Typography variant="h5" component="h2" sx={{ mb: 3, textAlign: 'center', display: 'none' }} className="pdf-header">
+          <Typography variant="h5" component="h2" sx={{ mb: 3, textAlign: 'center', display: 'none', color: '#000' }} className="pdf-header"> {/* PDF için renk siyah */}
              🗓️ Günün Planı - {selectedDateFormatted}
           </Typography>
           <Grid container spacing={3}>
@@ -243,6 +245,8 @@ const handleDownloadPDF = async () => {
                 </Typography>
                 <Box> {/* Scroll kaldırıldı */}
                     {groupedOrders[teamName]?.map((order) => (
+                      // PDF için tema'dan bağımsız renkler vermek daha iyi olabilir
+                      // Şimdilik tema renklerini kullanıyoruz
                       <OrderCard key={order.id} order={order} theme={theme} />
                     ))}
                 </Box>
@@ -250,7 +254,6 @@ const handleDownloadPDF = async () => {
             ))}
           </Grid>
       </Box>
-      // --- GÜNCELLEME SONU ---
        )}
     </Box>
   );
