@@ -1,410 +1,205 @@
 import React, { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  Stack,
-  Typography,
-  TextField,
-  MenuItem,
-  Paper
-} from "@mui/material";
-import BarChartIcon from "@mui/icons-material/BarChart";
-import ReceiptIcon from "@mui/icons-material/Receipt";
-import ThemeToggle from "./components/ThemeToggle";
-import {
-  DatePicker,
-  LocalizationProvider,
-} from "@mui/x-date-pickers";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import tr from "date-fns/locale/tr";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  Legend,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
 import { useNavigate } from "react-router-dom";
 import {
-  startOfWeek,
-  addDays,
-  subWeeks,
-  subMonths,
-  format,
-} from "date-fns";
-// YENİ: Çıkış ikonu eklendi
+  Box,
+  Typography,
+  Paper,
+  Stack,
+  CircularProgress,
+  Grid, // Grid layout için
+  Button, // Çıkış butonu için
+  useTheme
+} from "@mui/material";
 import LogoutIcon from '@mui/icons-material/Logout';
+import ThemeToggle from "./components/ThemeToggle"; // ThemeToggle'ı import etmeyi unutmayın
+import { format, isToday, parseISO } from 'date-fns'; // Tarih işlemleri için
+import { tr } from 'date-fns/locale'; // Türkçe tarih formatı için
+// YENİ: İkonlar eklendi
+import BarChartIcon from "@mui/icons-material/BarChart";
+import ReceiptIcon from "@mui/icons-material/Receipt"; // Siparişler için
+import EventIcon from '@mui/icons-material/Event'; // Takvim/Planner için
 
-const generateColor = (index, total) => {
-  const hue = (index * 360) / total;
-  return `hsl(${hue}, 70%, 55%)`;
+// Sipariş kartı için ayrı bir component oluşturmak daha temiz olabilir,
+// ama şimdilik doğrudan burada tanımlayalım.
+const OrderCard = ({ order, theme }) => {
+  const dateObj = order.yapilacak_tarih ? parseISO(order.yapilacak_tarih) : null;
+  const saat = dateObj ? format(dateObj, 'HH:mm', { locale: tr }) : 'N/A';
+
+  return (
+    <Paper
+      elevation={3}
+      sx={{
+        p: 2,
+        mb: 2, // Kartlar arası boşluk
+        backgroundColor: theme.palette.mode === 'dark' ? '#333' : '#f9f9f9',
+        borderLeft: `5px solid ${theme.palette.primary.main}`, // Sol kenarda renkli çizgi
+        borderRadius: '8px'
+      }}
+    >
+      <Typography variant="subtitle1" fontWeight="bold">
+        {saat} - {order.siparis || 'Bilinmeyen Sipariş'}
+      </Typography>
+      <Typography variant="body2">Müşteri: {order.musteri_isim || '-'}</Typography>
+      <Typography variant="body2">Telefon: {order.musteri_telefon || '-'}</Typography>
+      {order.ekstra_telefon && (
+        <Typography variant="body2" sx={{ color: theme.palette.info.main }}>
+          Ekstra Tel: {order.ekstra_telefon}
+        </Typography>
+      )}
+      <Typography variant="body2">Adres: {order.adres || '-'}</Typography>
+      <Typography variant="body2">Fiyat: {order.fiyat ? `${order.fiyat.toLocaleString('tr-TR')} ₺` : '-'}</Typography>
+      {order.notlar && (
+         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic', color: theme.palette.warning.dark }}>
+           Not: {order.notlar}
+         </Typography>
+      )}
+       {/* Gerekirse diğer alanları da buraya ekleyebilirsiniz */}
+    </Paper>
+  );
 };
 
-function Dashboard() {
-  const API_URL = process.env.REACT_APP_API_URL;
+
+export default function Planner() {
+  const API_URL = process.env.REACT_APP_API_URL || "";
   const navigate = useNavigate();
+  const theme = useTheme();
   const [orders, setOrders] = useState([]);
-  const [interval, setInterval] = useState("daily"); // Varsayılanı 'daily' olarak bırakıyoruz, menüde farklı gösterilebilir
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [groupedOrders, setGroupedOrders] = useState({}); // Ekiplere göre gruplanmış siparişler
+  const [teams, setTeams] = useState([]); // Ekiplerin listesi
 
-  // YENİ: Yetkisiz istekleri yakalayan yardımcı fonksiyon
-  const handleUnauthorized = (error) => {
-    // Yanıtın status kodunu kontrol et
-    const status = error.response ? error.response.status : (error instanceof Response ? error.status : null);
-    if (status === 401) {
-      localStorage.removeItem("authToken");
-      navigate("/");
-    }
-  };
-
-
-  const getTurkishIntervalLabel = (key) => {
-    switch (key) {
-      case "daily": return "Haftalık (Gün Gün)"; // Menüdeki metinle eşleşmeli
-      case "weekly": return "Haftalık";
-      case "monthly": return "Aylık";
-      case "yearly": return "Yıllık";
-      default: return "";
-    }
+  // Yetkisiz istekleri yakalayan fonksiyon (Home.js'ten kopyalandı)
+  const handleUnauthorized = async (error, context = "Unknown") => {
+     console.error(`Authorization Error Handler Triggered from [${context}]:`, error);
+    let status = null; let errorDetail = "Bilinmeyen Hata";
+    if (error instanceof Response) { status = error.status; try { const rb = await error.clone().json(); errorDetail = rb.detail || error.statusText; console.error(`API Response Error: Status ${status}, Detail: ${errorDetail}`, "Response Body:", rb); } catch (e) { try { const rt = await error.text(); errorDetail = rt || error.statusText; console.error(`API Response Error: Status ${status}, Body is not JSON. Body Text:`, rt); } catch (e2) { errorDetail = error.statusText; console.error(`API Response Error: Status ${status}, Could not parse response body.`);} } }
+    else if (error.response) { status = error.response.status; errorDetail = error.response.data?.detail || error.message; console.error(`Library Error Response: Status ${status}, Detail: ${errorDetail}`, "Response Data:", error.response.data); }
+    else { errorDetail = error.message || "Ağ hatası."; console.error("Non-HTTP Error:", errorDetail, error); }
+    if (status === 401) { console.warn("Unauthorized (401), logging out."); localStorage.removeItem("authToken"); localStorage.removeItem("authTokenTimestamp"); setTimeout(() => navigate("/"), 50); }
+    else { console.log(`Error status ${status || 'N/A'} in context [${context}], not logging out.`); /* Hata mesajı gösterilebilir */ }
   };
 
   useEffect(() => {
-    // YENİ: Token'ı al ve kontrol et
+    let isMounted = true;
+    setLoading(true);
     const token = localStorage.getItem("authToken");
-    if (!token) {
-      navigate("/"); // Token yoksa login'e yönlendir
-      return;
-    }
-    // YENİ: Tüm istekler için standart başlık (header)
+    if (!token) { navigate("/"); return; }
     const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
-
-    const fetchOrders = async () => {
+    const fetchOrdersAndGroup = async () => {
       try {
-        // YENİ: İsteklere authHeaders eklendi
-        const response = await fetch(`${API_URL}/orders`, authHeaders);
+        const ordersRes = await fetch(`${API_URL}/orders`, authHeaders);
+        if (isMounted) {
+          if (!ordersRes.ok) throw ordersRes;
+          const orderData = await ordersRes.json();
 
-        if (!response.ok) {
-            // YENİ: Daha detaylı hata yönetimi
-            if (response.status === 401) {
-                // Token geçersizse, hata yönetimi fonksiyonunu çağır
-                handleUnauthorized({ response: response });
-                return; // Fonksiyondan çık
+          // 1. Bugüne ait siparişleri filtrele
+          const today = new Date();
+          const todaysOrders = orderData.filter(order =>
+            order.yapilacak_tarih && isToday(parseISO(order.yapilacak_tarih))
+          );
+
+          // 2. Ekiplere göre grupla
+          const groups = todaysOrders.reduce((acc, order) => {
+            const team = order.ekip || "Ekip Belirtilmemiş"; // Ekip yoksa varsayılan grup
+            if (!acc[team]) {
+              acc[team] = [];
             }
-            throw new Error(`Network response was not ok: ${response.statusText}`);
-        }
+            // Saate göre sıralayarak ekle
+             acc[team].push(order);
+             acc[team].sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih));
+            return acc;
+          }, {});
 
-        const data = await response.json();
-        setOrders(data);
-      } catch (err) {
-        console.error("Veri çekme hatası:", err);
-        // handleUnauthorized zaten response objesi bekliyor
-        if (err.response) {
-            handleUnauthorized(err);
-        } else {
-             // Ağ hatası veya fetch içindeki diğer hatalar için genel mesaj
-             console.error("Beklenmedik bir hata oluştu:", err.message);
+          setGroupedOrders(groups);
+          // Ekiplerin isimlerini al ve sırala (örneğin alfabetik)
+          setTeams(Object.keys(groups).sort());
+          setOrders(todaysOrders); // İsterseniz bugünün tüm siparişlerini ayrı bir state'te tutabilirsiniz
         }
+      } catch (err) {
+        if (isMounted) { handleUnauthorized(err, "Planner fetchOrders"); }
+      } finally {
+        if (isMounted) { setLoading(false); }
       }
     };
-    fetchOrders();
-  }, [API_URL, navigate]); // YENİ: navigate bağımlılıklara eklendi
+    fetchOrdersAndGroup();
+    return () => { isMounted = false; };
+  }, [API_URL, navigate]);
 
-  const getRangeKeys = () => {
-    const keys = [];
-    const parsedSelectedDate = selectedDate || new Date();
-    if (interval === "daily") { // Haftanın günleri için
-      const startOfSelectedWeek = startOfWeek(parsedSelectedDate, { locale: tr });
-      for (let i = 0; i < 7; i++) {
-        const d = addDays(startOfSelectedWeek, i);
-        keys.push(format(d, "dd/MM/yyyy"));
-      }
-    } else if (interval === "weekly") { // Son 5 hafta için
-      for (let i = 4; i >= 0; i--) {
-        const start = startOfWeek(subWeeks(parsedSelectedDate, i), { locale: tr });
-        keys.push(`Hafta: ${format(start, "dd/MM/yyyy")}`);
-      }
-    } else if (interval === "monthly") { // Son 4 ay için
-      for (let i = 3; i >= 0; i--) {
-        const month = subMonths(parsedSelectedDate, i);
-        keys.push(format(month, "MMMM yyyy", { locale: tr }));
-      }
-    } else if (interval === "yearly") { // Son 5 yıl için
-      for (let i = 4; i >= 0; i--) {
-        keys.push((parsedSelectedDate.getFullYear() - i).toString());
-      }
-    }
-    return keys;
-  };
-
-  const barDataKeys = getRangeKeys();
-  // YENİ: siparis alanı olmayanları filtrele
-  const validOrders = orders.filter(o => o.siparis && o.yapilacak_tarih);
-  const allTypes = new Set(validOrders.map(o => o.siparis.trim() || "Bilinmeyen"));
-  const stackedMap = {};
-  barDataKeys.forEach((k) => (stackedMap[k] = {}));
-
-  validOrders.forEach((order) => {
-    const d = new Date(order.yapilacak_tarih);
-    const type = order.siparis.trim() || "Bilinmeyen";
-
-    let key = "";
-    if (interval === "daily") {
-      key = format(d, "dd/MM/yyyy");
-    } else if (interval === "weekly") {
-      const start = startOfWeek(d, { locale: tr });
-      key = `Hafta: ${format(start, "dd/MM/yyyy")}`;
-    } else if (interval === "monthly") {
-      key = format(d, "MMMM yyyy", { locale: tr });
-    } else if (interval === "yearly") {
-      key = d.getFullYear().toString();
-    }
-
-    if (stackedMap[key]) {
-      stackedMap[key][type] = (stackedMap[key][type] || 0) + 1;
-    }
-  });
-
-  const barChartData = barDataKeys.map(key => {
-      const entry = { date: key };
-      allTypes.forEach(type => {
-          entry[type] = stackedMap[key]?.[type] || 0;
-      });
-      return entry;
-  });
-
-
-  const isInSelectedRange = (dateStr) => {
-    if(!dateStr) return false;
-    const d = new Date(dateStr);
-    const parsedSelectedDate = selectedDate || new Date();
-    if (interval === "daily") { // Haftalık (Gün Gün)
-        const startOfSelectedWeek = startOfWeek(parsedSelectedDate, { locale: tr });
-        const endOfSelectedWeek = addDays(startOfSelectedWeek, 6);
-        // Günün başlangıcı ve bitişini dikkate alarak kontrol et
-        const dayStart = new Date(d.setHours(0,0,0,0));
-        const dayEnd = new Date(d.setHours(23,59,59,999));
-        return dayStart >= startOfSelectedWeek && dayEnd <= endOfSelectedWeek;
-    } else if (interval === "weekly") { // Haftalık (Son 5 Hafta)
-      // Bu aralığa giren tüm haftaların anahtarlarını oluştur
-      const weekKeysInRange = [];
-      for (let i = 4; i >= 0; i--) {
-         const start = startOfWeek(subWeeks(parsedSelectedDate, i), { locale: tr });
-         weekKeysInRange.push(`Hafta: ${format(start, "dd/MM/yyyy")}`);
-      }
-      // Verilen tarihin haftası bu anahtarlardan biri mi?
-      const currentWeekKey = `Hafta: ${format(startOfWeek(d, { locale: tr }), "dd/MM/yyyy")}`;
-      return weekKeysInRange.includes(currentWeekKey);
-
-    } else if (interval === "monthly") { // Aylık (Son 4 Ay)
-      const monthKeysInRange = [];
-      for (let i = 3; i >= 0; i--) {
-         const month = subMonths(parsedSelectedDate, i);
-         monthKeysInRange.push(format(month, "MMMM yyyy", { locale: tr }));
-      }
-      const currentMonthKey = format(d, "MMMM yyyy", { locale: tr });
-      return monthKeysInRange.includes(currentMonthKey);
-
-    } else if (interval === "yearly") { // Yıllık (Son 5 Yıl)
-      const yearKeysInRange = [];
-       for (let i = 4; i >= 0; i--) {
-         yearKeysInRange.push((parsedSelectedDate.getFullYear() - i).toString());
-      }
-      return yearKeysInRange.includes(d.getFullYear().toString());
-    }
-    return false;
-  };
-
-  // YENİ: siparis ve tarih alanı olanları filtrele
-  const filteredOrders = validOrders.filter((order) =>
-    isInSelectedRange(order.yapilacak_tarih)
-  );
-
-  const pieChartData = Array.from(allTypes).map((type) => ({
-    name: type,
-    value: filteredOrders.filter(
-      (order) => (order.siparis.trim() || "Bilinmeyen") === type
-    ).length,
-  })).filter(item => item.value > 0);
-
-  // YENİ: Çıkış yapma fonksiyonu
   const handleLogout = () => {
     localStorage.removeItem("authToken");
+    localStorage.removeItem("authTokenTimestamp");
     navigate("/");
   };
 
-  // YENİ: Daha dinamik başlıklar için
-   const intervalTitles = {
-    daily: `Hafta (${format(startOfWeek(selectedDate || new Date(), {locale: tr}), "dd MMM", {locale: tr})})`,
-    weekly: "Son 5 Hafta",
-    monthly: "Son 4 Ay",
-    yearly: "Son 5 Yıl",
-  };
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Plan yükleniyor...</Typography>
+      </Box>
+    );
+  }
 
-  // YENİ: Mevcut periyoda göre sipariş sayısı
-  const currentPeriodFilterLength = validOrders.filter((o) => {
-    const d = new Date(o.yapilacak_tarih);
-    const today = selectedDate || new Date(); // Seçili tarihi baz al
-    if (interval === "daily") { // Seçili haftanın tamamı
-        const start = startOfWeek(today, { locale: tr });
-        const end = addDays(start, 6);
-         // Günün başlangıcı ve bitişini dikkate alarak kontrol et
-        const dayStart = new Date(d.setHours(0,0,0,0));
-        const dayEnd = new Date(d.setHours(23,59,59,999));
-        return dayStart >= start && dayEnd <= end;
-    }
-    if (interval === "weekly") { // Seçili tarihten önceki 5 hafta
-        const fiveWeeksAgo = startOfWeek(subWeeks(today, 4), { locale: tr });
-        const endOfSelectedWeek = addDays(startOfWeek(today, {locale: tr}), 6);
-         // Günün başlangıcı ve bitişini dikkate alarak kontrol et
-        const dayStart = new Date(d.setHours(0,0,0,0));
-        const dayEnd = new Date(d.setHours(23,59,59,999));
-        return dayStart >= fiveWeeksAgo && dayEnd <= endOfSelectedWeek;
-    }
-    if (interval === "monthly") { // Seçili tarihten önceki 4 ay
-        const fourMonthsAgo = new Date(today);
-        fourMonthsAgo.setMonth(today.getMonth() - 3, 1); // 4 ay öncesinin ilk günü
-        fourMonthsAgo.setHours(0,0,0,0);
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0); // Seçili ayın son günü
-        endOfMonth.setHours(23,59,59,999);
-         // Günün başlangıcı ve bitişini dikkate alarak kontrol et
-        const dayStart = new Date(d.setHours(0,0,0,0));
-        const dayEnd = new Date(d.setHours(23,59,59,999));
-        return dayStart >= fourMonthsAgo && dayEnd <= endOfMonth;
-    }
-    if (interval === "yearly") { // Seçili tarihten önceki 5 yıl
-        const fiveYearsAgo = today.getFullYear() - 4;
-        const endOfYear = new Date(today.getFullYear(), 11, 31); // Seçili yılın son günü
-        endOfYear.setHours(23,59,59,999);
-        return d.getFullYear() >= fiveYearsAgo && d <= endOfYear;
-    }
-    return false;
-  }).length;
-
+  const todayFormatted = format(new Date(), 'dd MMMM yyyy, EEEE', { locale: tr });
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">📊 Dashboard</Typography>
-        <Stack direction="row" spacing={1}>
+    <Box sx={{ p: { xs: 2, sm: 3 }, minHeight: "100vh", backgroundColor: theme.palette.background.default }}>
+      {/* Header */}
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" mb={3} spacing={2}>
+        <Typography variant="h4" component="h1">🗓️ Günün Planı - {todayFormatted}</Typography>
+        {/* --- GÜNCELLENDİ: Header Butonları --- */}
+        <Stack direction="row" spacing={1} flexWrap="wrap">
           <ThemeToggle />
-          <Button variant="contained" color="primary" startIcon={<ReceiptIcon />} onClick={() => navigate("/home")}>
-            Siparişler
+           <Button size="small" variant="contained" color="secondary" startIcon={<EventIcon />} onClick={() => navigate("/planner")}>
+            Takvim
           </Button>
-          <Button variant="contained" color="primary" startIcon={<BarChartIcon />} onClick={() => navigate("/giderler")}>
+          <Button size="small" variant="contained" startIcon={<BarChartIcon />} onClick={() => navigate("/dashboard")}>
+            Dashboard
+          </Button>
+          <Button size="small" variant="contained" color="primary" onClick={() => navigate("/giderler")}>
             Giderler
           </Button>
-          {/* YENİ: Çıkış yap butonu */}
-          <Button variant="contained" color="error" startIcon={<LogoutIcon />} onClick={handleLogout}>
+           <Button size="small" variant="contained" color="primary" startIcon={<ReceiptIcon />} onClick={() => navigate("/home")}>
+            Siparişler
+          </Button>
+          <Button size="small" variant="contained" color="error" startIcon={<LogoutIcon />} onClick={handleLogout}>
             Çıkış Yap
           </Button>
         </Stack>
+        {/* --- GÜNCELLEME SONU --- */}
       </Stack>
 
-      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
-        <Stack direction="row" spacing={2} alignItems="center" marginBottom={3}>
-          <TextField
-            select
-            label="Zaman Aralığı"
-            value={interval}
-            onChange={(e) => setInterval(e.target.value)}
-            variant="outlined"
-            size="small"
-            sx={{minWidth: 150}}
-          >
-            {/* Menü değerleri getTurkishIntervalLabel ile eşleşmeli */}
-            <MenuItem value="daily">Haftalık (Gün Gün)</MenuItem>
-            <MenuItem value="weekly">Haftalık</MenuItem>
-            <MenuItem value="monthly">Aylık</MenuItem>
-            <MenuItem value="yearly">Yıllık</MenuItem>
-          </TextField>
-
-          <DatePicker
-            label="Referans Tarih" // YENİ: Etiket değiştirildi
-            value={selectedDate}
-            onChange={(newValue) => setSelectedDate(newValue)}
-            slotProps={{
-              textField: {
-                variant: "outlined",
-                size: "small",
-              },
-            }}
-          />
-        </Stack>
-      </LocalizationProvider>
-
-      <Typography variant="h5" gutterBottom>
-        {getTurkishIntervalLabel(interval)} Sipariş Sayısı
-      </Typography>
-      <BarChart width={730} height={250} data={barChartData}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis allowDecimals={false} />
-        <Tooltip />
-        <Legend />
-        {[...allTypes].map((type, index) => (
-          <Bar
-            key={type}
-            dataKey={type}
-            stackId="a"
-            fill={generateColor(index, allTypes.size)}
-          />
-        ))}
-      </BarChart>
-
-      <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
-        Sipariş Dağılımı ({intervalTitles[interval]})
-      </Typography>
-       <PieChart width={730} height={300}>
-        <Pie
-          data={pieChartData}
-          dataKey="value"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          innerRadius={80} // Biraz daha küçük iç yarıçap
-          outerRadius={120} // Biraz daha küçük dış yarıçap
-          paddingAngle={5}
-        >
-          {pieChartData.map((_, index) => (
-            <Cell
-              key={`cell-${index}`}
-              fill={generateColor(index, pieChartData.length)}
-            />
-          ))}
-        </Pie>
-        <Tooltip />
-        <Legend />
-      </PieChart>
-
-      <Stack direction="row" spacing={3} mt={4}>
-        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
-            <Typography variant="h6">📦 Toplam Sipariş ({intervalTitles[interval]})</Typography>
-            <Typography variant="h4" component="p">{filteredOrders.length}</Typography>
-        </Paper>
-        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
-            <Typography variant="h6">💰 Toplam Gelir ({intervalTitles[interval]})</Typography>
-            <Typography variant="h4" component="p">
-                {filteredOrders.reduce((acc, cur) => acc + Number(cur.fiyat || 0), 0).toLocaleString('tr-TR')} ₺
+      {/* Ekip Sütunları */}
+      {teams.length === 0 && !loading ? (
+           <Typography sx={{mt: 4, textAlign: 'center'}}>Bugün için planlanmış sipariş bulunmamaktadır.</Typography>
+       ) : (
+      <Grid container spacing={3}>
+        {teams.map((teamName) => (
+          <Grid item xs={12} sm={6} md={4} lg={3} key={teamName}> {/* Responsive sütun genişlikleri */}
+            <Typography
+                variant="h6"
+                align="center"
+                sx={{
+                    mb: 2,
+                    p: 1,
+                    backgroundColor: theme.palette.primary.light, // Hafif arkaplan
+                    color: theme.palette.primary.contrastText, // Kontrast renk
+                    borderRadius: '4px'
+                 }}
+            >
+                {teamName} ({groupedOrders[teamName]?.length || 0}) {/* Ekipteki sipariş sayısı */}
             </Typography>
-        </Paper>
-        <Paper elevation={3} sx={{ p: 2, flexGrow: 1, textAlign: 'center' }}>
-          <Typography variant="h6">
-             📅 Seçili Periyot Siparişleri {/* YENİ: Başlık sabit */}
-          </Typography>
-          <Typography variant="h4" component="p">
-            {currentPeriodFilterLength}
-          </Typography>
-        </Paper>
-      </Stack>
+            <Box sx={{ maxHeight: '75vh', overflowY: 'auto', pr: 1 }}> {/* Dikey scroll */}
+                {groupedOrders[teamName]?.map((order) => (
+                  <OrderCard key={order.id} order={order} theme={theme} />
+                ))}
+            </Box>
+          </Grid>
+        ))}
+      </Grid>
+       )}
     </Box>
   );
 }
-
-export default Dashboard;
 
