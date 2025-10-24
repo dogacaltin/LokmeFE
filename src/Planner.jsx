@@ -11,7 +11,6 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import ReceiptIcon from "@mui/icons-material/Receipt"; // Siparişler için
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import EventIcon from '@mui/icons-material/Event'; // Takvim/Planner için
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import TodayIcon from '@mui/icons-material/Today';
@@ -219,7 +218,6 @@ export default function Planner() {
         {/* Header Butonları */}
         <Stack direction="row" spacing={1} flexWrap="wrap">
           <ThemeToggle />
-          <Button size="small" variant="contained" color="secondary" startIcon={<EventIcon />} onClick={() => navigate("/planner")}>Takvim</Button>
           <Button size="small" variant="contained" startIcon={<BarChartIcon />} onClick={() => navigate("/dashboard")}>Dashboard</Button>
           <Button size="small" variant="contained" color="primary" onClick={() => navigate("/giderler")}>Giderler</Button>
           <Button size="small" variant="contained" color="primary" startIcon={<ReceiptIcon />} onClick={() => navigate("/home")}>Siparişler</Button>

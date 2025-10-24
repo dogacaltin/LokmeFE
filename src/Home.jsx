@@ -268,53 +268,68 @@ export default function Home() {
     } catch (err) { handleUnauthorized(err, "handlePhoneSave"); }
   };
 
-  const handleFormSubmit = async (e) => {
+const handleFormSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem("authToken");
     const url = editingId
       ? `${API_URL}/orders/${editingId}`
       : `${API_URL}/orders`;
     const method = editingId ? "PUT" : "POST";
-
+    console.log(`handleFormSubmit: Submitting form. Method: ${method}, URL: ${url}`);
     const orderPayload = { ...newOrder };
+
+    // Tarihi ISO formatına çevir ve kontrol et
     if (orderPayload.yapilacak_tarih && typeof orderPayload.yapilacak_tarih === 'string') {
         try {
-             orderPayload.yapilacak_tarih = new Date(orderPayload.yapilacak_tarih).toISOString();
-        } catch (dateErr) {
-            console.error("Geçersiz tarih formatı:", orderPayload.yapilacak_tarih);
-            return;
-        }
-    } else if (!orderPayload.yapilacak_tarih && method === 'POST') {
-         console.error("Yapılacak tarih zorunludur.");
-         // Kullanıcıya hata göstermek için bir state kullanılabilir.
-         // Örn: setFormError("Yapılacak tarih zorunludur.");
-         return;
+            const date = new Date(orderPayload.yapilacak_tarih);
+            if (isNaN(date.getTime())) throw new Error("Invalid Date object");
+            orderPayload.yapilacak_tarih = date.toISOString();
+            console.log("handleFormSubmit: Date converted to ISO:", orderPayload.yapilacak_tarih);
+         }
+        catch (dateErr) { console.error("Invalid date format entered:", orderPayload.yapilacak_tarih, dateErr); alert("Lütfen geçerli bir tarih ve saat girin."); return; }
+    } else if (!orderPayload.yapilacak_tarih && method === 'POST') { console.error("Yapılacak tarih needed for new order."); alert("Yeni sipariş için 'Yapılacak Tarih' zorunludur."); return; }
+
+    // Fiyatı sayıya çevir ve kontrol et
+     if (orderPayload.fiyat && typeof orderPayload.fiyat === 'string') {
+        const price = parseFloat(orderPayload.fiyat);
+        if (isNaN(price)) { console.error("Invalid price format:", orderPayload.fiyat); alert("Lütfen geçerli bir fiyat girin."); return; }
+        orderPayload.fiyat = price;
+    } else if (orderPayload.fiyat === '') {
+        // Fiyat alanı boş bırakıldıysa veya silindiyse null gönderilebilir (backend'e bağlı)
+        orderPayload.fiyat = null; // veya 0, backend'in beklentisine göre
     }
 
 
     try {
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(orderPayload),
-      });
+      console.log("handleFormSubmit: Sending payload:", orderPayload);
+      const response = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(orderPayload) });
+      console.log(`handleFormSubmit: API response status: ${response.status}`);
       if (!response.ok) throw response;
+      const savedOrder = await response.json(); // API'den dönen güncel/yeni veriyi al
+      console.log("handleFormSubmit: Order saved/updated successfully:", savedOrder);
 
       setShowForm(false);
       setEditingId(null);
-      setNewOrder({});
+      setNewOrder({}); // Formu temizle
 
-      // Veriyi tekrar çekmek yerine gelen cevabı kullanabiliriz (daha verimli)
-      // Ancak API'nin güncellenmiş/yeni objeyi döndürdüğünden emin olmalıyız.
-      // Şimdilik tekrar çekme yöntemiyle devam edelim:
-      const ordersRes = await fetch(`${API_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!ordersRes.ok) throw ordersRes;
-      const updated = await ordersRes.json();
-      setOrders(updated.filter(o => o.yapilacak_tarih).sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)));
-    } catch (err) {
-      console.error("Sipariş kaydetme hatası:", err);
-      handleUnauthorized(err, "handleFormSubmit");
-    }
+      // --- YENİ: State'i Yerel Olarak Güncelle ve Sırala ---
+      setOrders(prevOrders => {
+          let updatedList;
+          if (editingId) {
+              // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
+              updatedList = prevOrders.map(o => o.id === editingId ? savedOrder : o);
+          } else {
+              // Yeni Ekleme: Yeni siparişi listeye ekle
+              updatedList = [...prevOrders, savedOrder];
+          }
+          // Hem ekleme hem de düzenleme sonrası listeyi filtrele ve sırala
+          return updatedList
+              .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar
+              .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
+      });
+      // --- GÜNCELLEME SONU ---
+
+    } catch (err) { console.error(`handleFormSubmit Error (${method}):`, err); handleUnauthorized(err, "handleFormSubmit"); }
   };
 
   // --- GÜNCELLENDİ: handleDelete ---
