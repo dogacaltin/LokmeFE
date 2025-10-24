@@ -271,7 +271,7 @@ export default function Home() {
     } catch (err) { handleUnauthorized(err, "handlePhoneSave"); }
   };
 
-const handleFormSubmit = async (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem("authToken");
     const url = editingId
@@ -311,27 +311,46 @@ const handleFormSubmit = async (e) => {
 
       // --- BURADAN İTİBAREN DEĞİŞTİRİN ---
       // Önceki state'i al ve güncelle
-      const currentOrders = orders; // Mevcut state'i bir değişkene al
-      let updatedList;
-      if (editingId) {
-          // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
-          updatedList = currentOrders.map(o => o.id === editingId ? savedOrder : o);
-          console.log("handleFormSubmit: Updated list after edit:", updatedList.map(o=>o.id));
-      } else {
-          // Yeni Ekleme: Yeni siparişi listeye ekle
-          updatedList = [...currentOrders, savedOrder];
-           console.log("handleFormSubmit: Updated list after add:", updatedList.map(o=>o.id));
-      }
+      // GÜNCELLEME: `orders` state'ini doğrudan kullanmak yerine fonksiyonel güncelleme yapalım
+      setOrders(prevOrders => {
+          let updatedList;
+          if (editingId) {
+              // Düzenleme: Eski siparişi bul ve yenisiyle değiştir
+              updatedList = prevOrders.map(o => o.id === editingId ? savedOrder : o);
+              console.log("handleFormSubmit: Updated list after edit:", updatedList.map(o=>o.id));
+          } else {
+              // Yeni Ekleme: Yeni siparişi listeye ekle
+              updatedList = [...prevOrders, savedOrder];
+              console.log("handleFormSubmit: Updated list after add:", updatedList.map(o=>o.id));
+          }
 
-      // Güncellenmiş listeyi filtrele ve sırala
-      const sortedList = updatedList
-          .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar
-          .sort((a, b) => new Date(a.yapilacak_tarih) - new Date(b.yapilacak_tarih)); // Tarihe göre sırala
-      console.log("handleFormSubmit: List sorted:", sortedList.map(o=> ({id: o.id, date: o.yapilacak_tarih})));
+          // Güncellenmiş listeyi filtrele ve filteredOrders ile AYNI MANTIKLA sırala
+          const now = new Date();
+          const fiveHoursAgo = new Date(now.getTime() - 5 * 60 * 60 * 1000); // Bu değeri dışarı alabiliriz
 
-      // State'i ZATEN SIRALANMIŞ liste ile güncelle
-      setOrders(sortedList);
-      // --- DEĞİŞİKLİK SONU ---
+          const sortedList = updatedList
+              .filter(order => order.yapilacak_tarih) // Tarihi olmayanları çıkar
+              .map(order => { // yapildi durumunu ekle (sıralama için gerekli)
+                  const yapilacakTarih = new Date(order.yapilacak_tarih);
+                  return { ...order, yapildi: yapilacakTarih <= fiveHoursAgo };
+              })
+              .sort((a, b) => { // filteredOrders ile aynı sıralama mantığı
+                  if (!a.yapilacak_tarih || !b.yapilacak_tarih) return 0;
+                  const aTime = new Date(a.yapilacak_tarih);
+                  const bTime = new Date(b.yapilacak_tarih);
+                  // Önce yapılma durumuna göre
+                  if (a.yapildi !== b.yapildi) { return a.yapildi ? 1 : -1; } // Yapılanlar sona
+                  // Sonra tarihe göre
+                  if (a.yapildi) { return bTime - aTime; } // Yapılanlar içinde en yeni üste
+                  else { return aTime - bTime; } // Yapılmayanlar içinde en eski üste
+               });
+          console.log("handleFormSubmit: List sorted using filteredOrders logic:", sortedList.map(o=> ({id: o.id, date: o.yapilacak_tarih, done: o.yapildi })));
+
+          // State'i ZATEN SIRALANMIŞ liste ile güncelle
+          // map ile eklediğimiz 'yapildi' alanını burada kaldırabiliriz (opsiyonel, filteredOrders zaten tekrar ekliyor)
+          return sortedList.map(({ yapildi, ...rest }) => rest);
+          // return sortedList; // yapildi alanı kalsın derseniz bu satırı kullanın
+      });
 
       setShowForm(false);
       setEditingId(null);
